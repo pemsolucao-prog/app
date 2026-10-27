@@ -7,7 +7,9 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="P&amp;M">
 <title>P&amp;M Soluções — Painel</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Source+Sans+3:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
@@ -658,7 +660,7 @@ body.role-tecnico #tl-valor-wrap,body.role-tecnico .mm-del,body.role-tecnico #tl
   window.addEventListener('online', onOnline);
 
   /* ---------- app instalável / funciona sem sinal ---------- */
-  if('serviceWorker' in navigator && location.protocol === 'https:'){
+  if('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')){
     window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(e){ console.warn('sw', e); }); });
   }
 
