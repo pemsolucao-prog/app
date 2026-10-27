@@ -605,8 +605,15 @@ body.role-tecnico #tl-valor-wrap,body.role-tecnico .mm-del,body.role-tecnico #tl
     });
   }
 
+  // Sair: além de deslogar, apaga a cópia dos dados guardada neste navegador
+  // (importante em computador de trabalho ou emprestado).
   function signOut(){
-    auth.signOut().then(function(){ location.reload(); }, function(){ location.reload(); });
+    var go = function(){ location.reload(); };
+    var wipe = function(){
+      try{ Object.keys(localStorage).forEach(function(k){ if(k.indexOf('pmfb.profile.')===0) localStorage.removeItem(k); }); }catch(e){}
+      try{ return fs.terminate().then(function(){ return fs.clearPersistence(); }).catch(function(e){ console.warn('limpar cópia local', e); }); }catch(e){ return Promise.resolve(); }
+    };
+    auth.signOut().then(wipe, wipe).then(go, go);
   }
 
   /* ---------- sessão ---------- */
