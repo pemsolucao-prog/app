@@ -432,6 +432,13 @@ body.role-tecnico #tl-valor-wrap,body.role-tecnico .mm-del,body.role-tecnico #tl
 .campo-toggle button{border:0;background:transparent;border-radius:999px;padding:8px 14px;min-height:40px;font:inherit;font-size:14px;font-weight:600;color:var(--ink-soft);cursor:pointer;}
 .campo-toggle button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(20,40,66,.15);}
 
+.fb-out-mobile{display:none;}
+@media (max-width:820px){
+  #main{position:relative;}
+  .fb-out-mobile{display:inline-flex;position:absolute;top:14px;right:16px;z-index:2;min-height:40px;align-items:center;}
+  #topbar{padding-right:110px;}
+}
+
 </style>
 <script src="firebase-app-compat.js"></script>
 <script src="firebase-auth-compat.js"></script>
@@ -6165,9 +6172,18 @@ function fbRenderUserBox(){
     + esc(fbRole==='admin' ? 'Administrador' : 'Técnico')
     + '<br><button type="button" class="btn small" id="fb-signout">Sair</button>';
   foot.appendChild(box);
-  $('#fb-signout').onclick = function(){
-    customConfirm('Sair do app neste aparelho? Para entrar de novo vai precisar do e-mail e da senha.', function(){ window.PM_FB.signOut(); });
+  // no celular o rodapé do menu some: botão "Sair" no alto da tela
+  var main = $('#main');
+  if(main){
+    var mob = document.createElement('button'); mob.type = 'button'; mob.className = 'btn small fb-out-mobile'; mob.id = 'fb-signout-m';
+    mob.innerHTML = esc((fbProfile.nome || '').split(' ')[0]) + ' · Sair';
+    main.insertBefore(mob, main.firstChild);
+  }
+  var ask = function(){
+    customConfirm('Sair do app neste aparelho? Para entrar de novo vai precisar do e-mail e da senha (e de internet).', function(){ window.PM_FB.signOut(); });
   };
+  $('#fb-signout').onclick = ask;
+  if($('#fb-signout-m')) $('#fb-signout-m').onclick = ask;
 }
 
 /* ---- Projeção "clientesCampo": o cadastro do cliente SEM valores nem dados fiscais.
