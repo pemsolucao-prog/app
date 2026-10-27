@@ -490,6 +490,40 @@ button.pt-card{cursor:pointer;}
 .lau-opt{display:flex;align-items:center;gap:8px;margin:6px 0;font-weight:500;cursor:pointer;}
 .lau-opt input{width:auto;}
 .pt-chev{font-size:26px;color:var(--ink-soft);line-height:1;}
+/* ---------- Qualidade da água ---------- */
+.qa-laudos{align-items:flex-start;}
+.qa-big{font-size:26px;font-weight:800;color:var(--ink);margin-top:2px;}
+.qa-big span{font-size:14px;font-weight:600;color:var(--ink-soft);}
+.qa-strip{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+.qa-chip{font-size:12px;font-weight:700;border-radius:999px;padding:3px 8px;background:var(--ok-soft);color:var(--ok);}
+.qa-chip.bad{background:var(--danger-soft);color:var(--danger);}
+.qa-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
+.qa-tile{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px;min-width:0;}
+.qa-val{font-size:24px;font-weight:800;color:var(--ink);margin:4px 0;}
+.qa-val span{font-size:12px;font-weight:600;color:var(--ink-soft);}
+.qa-st{font-size:12.5px;font-weight:700;}
+.qa-st.ok{color:var(--ok);} .qa-st.warn{color:var(--warn);} .qa-st.danger{color:var(--danger);} .qa-st.neutral{color:var(--ink-soft);}
+@media (max-width:420px){ .qa-tiles{grid-template-columns:1fr;} .qa-tile{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;} .qa-tile .qa-val{margin:0;} }
+.qa-chartcard{align-items:flex-start;}
+.qa-chart{position:relative;margin-top:8px;}
+.qa-svg{width:100%;height:auto;display:block;touch-action:pan-y;}
+.qa-band{fill:var(--accent-soft);opacity:.9;}
+.qa-grid{stroke:var(--line);stroke-width:1;}
+.qa-ax{font-size:10px;fill:var(--ink-faint);font-family:var(--font-body);}
+.qa-line{fill:none;stroke:var(--viz-1,#2a78d6);stroke-width:2;stroke-linejoin:round;stroke-linecap:round;}
+.qa-dot{fill:var(--viz-1,#2a78d6);stroke:var(--surface);stroke-width:2;}
+.qa-dot.bad.danger{fill:var(--danger);} .qa-dot.bad.warn{fill:var(--warn);}
+.qa-lbl{font-size:11px;font-weight:700;fill:var(--ink);font-family:var(--font-body);}
+.qa-cross{stroke:var(--ink-faint);stroke-width:1;stroke-dasharray:3 3;}
+.qa-tip{display:none;position:absolute;top:0;width:150px;box-sizing:border-box;background:var(--ink);color:var(--surface);font-size:12px;line-height:1.4;border-radius:8px;padding:6px 8px;pointer-events:none;}
+.qa-table{margin-top:8px;font-size:13px;}
+.qa-table summary{cursor:pointer;color:var(--accent);font-weight:600;min-height:32px;}
+.qa-table table{width:100%;border-collapse:collapse;margin-top:6px;}
+.qa-table td,.qa-table th{text-align:left;padding:4px 6px;border-bottom:1px solid var(--line);}
+/* ---------- Contratos (admin) ---------- */
+.ctr-client{padding:12px 18px;border-top:1px solid var(--line);}
+.ctr-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;}
+.ctr-head .hint{flex:1;min-width:180px;}
 
 </style>
 <script src="firebase-app-compat.js"></script>
@@ -759,6 +793,7 @@ button.pt-card{cursor:pointer;}
     <button class="navbtn" data-tab="financeiro"><span class="ico">09</span>Financeiro</button>
     <button class="navbtn" data-tab="panorama"><span class="ico">10</span>Panorama</button>
     <button class="navbtn" data-tab="relatorios"><span class="ico">11</span>Relatórios</button>
+    <button class="navbtn" data-tab="contratos"><span class="ico">§</span>Contratos</button>
     <button class="navbtn" data-tab="apoio"><span class="ico">12</span>Apoio ao Cliente</button>
     <button class="navbtn" data-tab="acessos"><span class="ico">13</span>Contas e acessos</button>
     <button class="navbtn" data-tab="backup"><span class="ico">14</span>Backup</button>
@@ -1645,7 +1680,7 @@ var BACKUP_COLLECTIONS = [
   ['clients','Clientes'], ['maintenanceVisits','Visitas de manutenção'], ['installationVisits','Instalações'],
   ['analyses','Análises'], ['quotes','Orçamentos'], ['receivables','Contas a receber'], ['expenses','Despesas'],
   ['packages','Pacotes'], ['pricing','Valores'], ['staffSchedule','Escala da equipe'], ['supplies','Insumos'],
-  ['reports','Relatórios'], ['materials','Materiais'], ['counters','Numeração de propostas'], ['generatedProposals','Propostas geradas'], ['apoioFiles','Arquivos de apoio'], ['apoioFileData','Conteúdo dos arquivos de apoio'], ['financeConfig','Percentuais do panorama'], ['financeMoves','Caixinhas (separações e usos)'], ['accounts','Contas e acessos'], ['reportFiles','Arquivos de relatório'], ['reportFileChunks','Conteúdo dos arquivos de relatório'], ['solicitacoes','Solicitações dos clientes']
+  ['reports','Relatórios'], ['materials','Materiais'], ['counters','Numeração de propostas'], ['generatedProposals','Propostas geradas'], ['apoioFiles','Arquivos de apoio'], ['apoioFileData','Conteúdo dos arquivos de apoio'], ['financeConfig','Percentuais do panorama'], ['financeMoves','Caixinhas (separações e usos)'], ['accounts','Contas e acessos'], ['reportFiles','Arquivos de relatório'], ['reportFileChunks','Conteúdo dos arquivos de relatório'], ['solicitacoes','Solicitações dos clientes'], ['contratos','Contratos e revisões']
 ];
 function renderBackup(){
   var offline = !!window.__PM_OFFLINE__;
@@ -1800,6 +1835,7 @@ function render(){
   if(currentTab==='campo'){ renderCampo(); return; }
   if(currentTab==='portal'){ renderPortal(); return; }
   if(currentTab==='solicitacoes'){ renderSolicitacoes(); return; }
+  if(currentTab==='contratos'){ renderContratos(); return; }
   if(currentTab==='dashboard') renderDashboard();
   else if(currentTab==='clientes'){ actions.innerHTML = '<button class="btn primary" id="btn-new-client">+ Novo cliente</button>'; $('#btn-new-client').onclick=function(){openClientModal(null, (clientFilter==='instalacao'||clientFilter==='extra')?clientFilter:'manutencao', clientFilter==='propostas'?'Proposta enviada':null);}; renderClientes(); }
   else if(currentTab==='valores') renderValores();
@@ -6227,6 +6263,7 @@ async function initFirebaseSession(){
   if(fbProfile.tecnicoId && tecnicoById(fbProfile.tecnicoId)) TECNICO_PADRAO = fbProfile.tecnicoId;
   fbStartCampoSync();
   fbStartSolicitacoesAdmin();
+  subscribe('contratos', state.contratos);
   return 'admin';
 }
 
@@ -6441,6 +6478,7 @@ function fbStartCliente(){
   fbSubscribeWhere('maintenanceVisits', state.visits, 'clientId', cid);
   fbSubscribeWhere('solicitacoes', state.solicitacoes, 'clientId', cid);
   fbSubscribeWhere('reports', state.reports, [['clientId', cid], ['publicado', true]]);
+  fbSubscribeWhere('contratos', state.contratos, [['clientId', cid], ['publicado', true]]);
   goTab('portal');
 }
 function fbStartSolicitacoesAdmin(){
@@ -6507,6 +6545,8 @@ function renderPortal(force){
       + '<button type="button" class="pt-tile" data-go="solicitar" data-tipo="ocorrencia"><span class="pt-ico warn">!</span>Informar ocorrência</button>'
       + '<button type="button" class="pt-tile" data-go="relatorios"><span class="pt-ico">≡</span>Relatórios de visita<span class="pt-tile-sub">Manutenção, limpezas e trocas de peças</span></button>'
       + '<button type="button" class="pt-tile" data-go="laudos"><span class="pt-ico ok">✓</span>Laudos de análise<span class="pt-tile-sub">Resultados do laboratório</span></button>'
+      + '<button type="button" class="pt-tile" data-go="qualidade"><span class="pt-ico">◔</span>Qualidade da água<span class="pt-tile-sub">pH, cloro e temperatura</span></button>'
+      + '<button type="button" class="pt-tile" data-go="contrato"><span class="pt-ico">§</span>Contrato<span class="pt-tile-sub">Contrato e revisões</span></button>'
       + '<a class="pt-tile pt-wide" href="https://wa.me/'+PM_WHATS+'" target="_blank" rel="noopener"><span class="pt-ico ok">✆</span>Falar no WhatsApp</a>'
       + '</div>';
     var sols = state.solicitacoes.slice().sort(function(a,b){ return (b.createdAt||'').localeCompare(a.createdAt||''); }).slice(0,5);
@@ -6530,6 +6570,10 @@ function renderPortal(force){
     html += '<p class="pt-note">Os resultados do laboratório ficam em <button type="button" class="pt-link" data-go="laudos">Laudos de análise</button>.</p>';
   } else if(portalView.mode==='laudos'){
     html += portalLaudosHTML();
+  } else if(portalView.mode==='qualidade'){
+    html += portalQualidadeHTML();
+  } else if(portalView.mode==='contrato'){
+    html += portalContratoHTML();
   } else if(portalView.mode==='relatorio'){
     var v = state.visits.find(function(x){ return x.id===portalView.id; });
     if(!v){ portalView.mode = 'relatorios'; return renderPortal(true); }
@@ -6554,6 +6598,8 @@ function renderPortal(force){
   $all('[data-go]').forEach(function(b){ b.onclick = function(){ if(b.dataset.tipo) portalView.tipo = b.dataset.tipo; portalGo(b.dataset.go); }; });
   $all('[data-open]').forEach(function(b){ b.onclick = function(){ portalGo('relatorio', b.dataset.open); }; });
   if(portalView.mode==='laudos') wirePortalLaudos();
+  if(portalView.mode==='qualidade') qaWireCharts();
+  if(portalView.mode==='contrato') wirePortalContrato();
   if(portalView.mode==='relatorio'){
     var area = $('#pt-report'), rv = state.visits.find(function(x){ return x.id===portalView.id; });
     area.innerHTML = buildVisitReportHTML(rv);
@@ -6930,6 +6976,262 @@ function portalLaudosHTML(){
 function wirePortalLaudos(){
   $all('.lau-ver').forEach(function(b){ b.onclick = function(){ var r = state.reports.find(function(x){ return x.id===b.dataset.id; }); var w = window.open('', '_blank'); fbOpenReportFile(laudoFileId(r), w); }; });
   $all('.lau-baixar').forEach(function(b){ b.onclick = function(){ var r = state.reports.find(function(x){ return x.id===b.dataset.id; }); b.disabled = true; fbDownloadReportFile(laudoFileId(r), laudoFileName(r)).then(function(){ b.disabled = false; }); }; });
+}
+
+/* ===================== QUALIDADE DA ÁGUA (Área do cliente) =====================
+   Medições de campo (pH, cloro, temperatura) das visitas concluídas + histórico dos laudos.
+   As faixas de referência seguem a Portaria GM/MS nº 888/2021 (ajustáveis abaixo). */
+var QA_PARAMS = [
+  { key:'cloro', nome:'Cloro residual livre', unidade:'mg/L', dec:2, faixa:[0.2, 2.0], limite:5.0,
+    faixaTxt:'faixa recomendada 0,2 a 2,0 mg/L (máximo permitido 5,0)' },
+  { key:'ph', nome:'pH', unidade:'', dec:1, faixa:[6.0, 9.0], limite:null, faixaTxt:'faixa recomendada 6,0 a 9,0' },
+  { key:'temperatura', nome:'Temperatura', unidade:'°C', dec:1, faixa:null, limite:null, faixaTxt:'acompanhamento (sem limite na norma)' }
+];
+function qaStatus(p, v){
+  if(v===null || v===undefined || !isFinite(v)) return null;
+  if(!p.faixa) return { ok:true, txt:'Registrado', cls:'neutral', ico:'•' };
+  if(v < p.faixa[0]) return { ok:false, txt:'Abaixo do mínimo', cls:'danger', ico:'!' };
+  if(p.limite !== null && v > p.limite) return { ok:false, txt:'Acima do máximo permitido', cls:'danger', ico:'!' };
+  if(v > p.faixa[1]) return p.limite !== null ? { ok:false, txt:'Acima do recomendado', cls:'warn', ico:'!' } : { ok:false, txt:'Fora da faixa', cls:'danger', ico:'!' };
+  return { ok:true, txt:'Dentro da faixa', cls:'ok', ico:'✓' };
+}
+function qaFmt(v, dec){ return (v===null || v===undefined) ? '—' : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: dec, maximumFractionDigits: dec }); }
+function qaSeries(key){
+  return state.visits.filter(function(v){ return v.status==='Concluída' && v.talao && v.talao.analises && tlNum(v.talao.analises[key]) !== null && v.date; })
+    .sort(function(a,b){ return (a.date||'').localeCompare(b.date||''); })
+    .slice(-12)
+    .map(function(v){ return { date: v.date, y: tlNum(v.talao.analises[key]), ponto: v.pointName || '' }; });
+}
+var qaCharts = {};
+function qaChartSVG(p, pts){
+  var W = 340, H = 170, L = 34, R = 44, T = 14, B = 26;
+  var ys = pts.map(function(d){ return d.y; });
+  var lo = Math.min.apply(null, ys), hi = Math.max.apply(null, ys);
+  if(p.faixa){ lo = Math.min(lo, p.faixa[0]); hi = Math.max(hi, p.faixa[1]); }
+  var pad = (hi - lo) * 0.15 || 1; lo = Math.max(p.key==='temperatura' ? lo - pad : 0, lo - pad); hi = hi + pad;
+  if(p.key==='ph'){ lo = Math.min(lo, 5.5); hi = Math.max(hi, 9.5); }
+  var t0 = new Date(pts[0].date+'T12:00:00').getTime(), t1 = new Date(pts[pts.length-1].date+'T12:00:00').getTime();
+  function X(d){ return pts.length===1 ? (L + (W-L-R)/2) : L + (new Date(d+'T12:00:00').getTime() - t0) / (t1 - t0 || 1) * (W-L-R); }
+  function Y(v){ return T + (1 - (v - lo) / (hi - lo)) * (H-T-B); }
+  var s = '<svg viewBox="0 0 '+W+' '+H+'" class="qa-svg" role="img" aria-label="'+esc(p.nome)+': '+pts.length+' medições">';
+  if(p.faixa){
+    var yb1 = Y(p.faixa[1]), yb0 = Y(p.faixa[0]);
+    s += '<rect x="'+L+'" y="'+yb1.toFixed(1)+'" width="'+(W-L-R)+'" height="'+(yb0-yb1).toFixed(1)+'" class="qa-band"/>';
+  }
+  var ticks = [lo + (hi-lo)*0.1, (lo+hi)/2, hi - (hi-lo)*0.1];
+  ticks.forEach(function(tv){ var y = Y(tv).toFixed(1); s += '<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y+'" y2="'+y+'" class="qa-grid"/><text x="'+(L-6)+'" y="'+y+'" class="qa-ax" text-anchor="end" dominant-baseline="middle">'+qaFmt(tv, p.dec===2?1:p.dec)+'</text>'; });
+  s += '<text x="'+L+'" y="'+(H-6)+'" class="qa-ax">'+fmtDate(pts[0].date).slice(0,5)+'</text>';
+  if(pts.length > 1) s += '<text x="'+(W-R)+'" y="'+(H-6)+'" class="qa-ax" text-anchor="end">'+fmtDate(pts[pts.length-1].date).slice(0,5)+'</text>';
+  if(pts.length > 1) s += '<path d="'+pts.map(function(d,i){ return (i?'L':'M')+X(d.date).toFixed(1)+','+Y(d.y).toFixed(1); }).join('')+'" class="qa-line"/>';
+  pts.forEach(function(d){
+    var st = qaStatus(p, d.y);
+    s += '<circle cx="'+X(d.date).toFixed(1)+'" cy="'+Y(d.y).toFixed(1)+'" r="'+(st && !st.ok ? 5 : 4)+'" class="qa-dot'+(st && !st.ok ? ' bad '+st.cls : '')+'"/>';
+  });
+  var last = pts[pts.length-1];
+  s += '<text x="'+(X(last.date)+8).toFixed(1)+'" y="'+Y(last.y).toFixed(1)+'" class="qa-lbl" dominant-baseline="middle">'+qaFmt(last.y, p.dec)+'</text>';
+  s += '<line class="qa-cross" x1="0" x2="0" y1="'+T+'" y2="'+(H-B)+'" style="display:none"/>';
+  s += '<rect x="'+L+'" y="0" width="'+(W-L-R)+'" height="'+H+'" fill="transparent" class="qa-hit"/>';
+  s += '</svg>';
+  qaCharts[p.key] = { pts: pts, X: X, Y: Y, W: W, p: p };
+  return s;
+}
+function qaWireCharts(){
+  $all('.qa-chart').forEach(function(box){
+    var c = qaCharts[box.dataset.key]; if(!c) return;
+    var svg = box.querySelector('svg'), tip = box.querySelector('.qa-tip'), cross = svg.querySelector('.qa-cross'), hit = svg.querySelector('.qa-hit');
+    function show(ev){
+      var r = svg.getBoundingClientRect(), sx = (ev.clientX - r.left) * c.W / r.width;
+      var best = c.pts.reduce(function(a, d){ return Math.abs(c.X(d.date) - sx) < Math.abs(c.X(a.date) - sx) ? d : a; }, c.pts[0]);
+      var x = c.X(best.date); cross.setAttribute('x1', x); cross.setAttribute('x2', x); cross.style.display = '';
+      var st = qaStatus(c.p, best.y);
+      tip.innerHTML = '<strong>'+qaFmt(best.y, c.p.dec)+(c.p.unidade?' '+c.p.unidade:'')+'</strong> · '+fmtDate(best.date)+(best.ponto?'<br>'+esc(best.ponto):'')+(st?'<br>'+esc(st.txt):'');
+      tip.style.display = 'block';
+      var px = x / c.W * r.width; tip.style.left = Math.max(0, Math.min(r.width - 150, px - 75)) + 'px';
+    }
+    function hide(){ cross.style.display = 'none'; tip.style.display = 'none'; }
+    hit.addEventListener('pointermove', show); hit.addEventListener('pointerdown', show); hit.addEventListener('pointerleave', hide);
+  });
+}
+function portalQualidadeHTML(){
+  var html = '<h1 class="pt-h">Qualidade da água</h1><p class="pt-k2" style="margin:-6px 2px 14px;">As medições de campo mostram se o tratamento está funcionando. A potabilidade é confirmada pelos laudos do laboratório.</p>';
+  // laudos (últimos 12 meses)
+  var desde = new Date(Date.now() - 365*86400000).toISOString().slice(0,10);
+  var lau = state.reports.filter(function(r){ return r.publicado && (r.collectionDate||'') >= desde; }).sort(function(a,b){ return (a.collectionDate||'').localeCompare(b.collectionDate||''); });
+  var nOk = lau.filter(function(r){ return r.conclusao==='propria'; }).length;
+  html += '<div class="pt-card qa-laudos"><div style="flex:1;min-width:0;"><div class="pt-k2">Laudos do laboratório · últimos 12 meses</div>';
+  if(lau.length){
+    html += '<div class="qa-big">'+nOk+' de '+lau.length+' <span>'+(lau.length===1?'laudo próprio':'laudos próprios')+' para consumo</span></div><div class="qa-strip">'
+      + lau.map(function(r){ var ok = r.conclusao==='propria', m = MESES_PT[Number((r.collectionDate||'').slice(5,7))-1] || '';
+          return '<span class="qa-chip '+(ok?'ok':'bad')+'" title="Coleta '+fmtDate(r.collectionDate)+': '+(ok?'própria':'imprópria')+' para consumo">'+(ok?'✓':'✕')+' '+esc(m.slice(0,3))+'</span>'; }).join('')
+      + '</div>';
+  } else html += '<div class="pt-t" style="margin-top:4px;">Nenhum laudo publicado nos últimos 12 meses.</div>';
+  html += '</div><button type="button" class="pt-link" data-go="laudos">Ver laudos</button></div>';
+  // resumo + gráficos
+  var any = false;
+  var tiles = '<div class="qa-tiles">', charts = '';
+  QA_PARAMS.forEach(function(p){
+    var pts = qaSeries(p.key), last = pts[pts.length-1], st = last ? qaStatus(p, last.y) : null;
+    if(pts.length) any = true;
+    tiles += '<div class="qa-tile"><div class="pt-k2">'+esc(p.nome)+'</div>'
+      + '<div class="qa-val">'+(last ? qaFmt(last.y, p.dec)+(p.unidade?'<span> '+esc(p.unidade)+'</span>':'') : '—')+'</div>'
+      + (st ? '<div class="qa-st '+st.cls+'"><span aria-hidden="true">'+st.ico+'</span> '+esc(st.txt)+'</div><div class="pt-k2">em '+fmtDate(last.date)+'</div>' : '<div class="pt-k2">sem medição ainda</div>')
+      + '</div>';
+    if(pts.length){
+      charts += '<div class="pt-card qa-chartcard"><div style="width:100%;min-width:0;"><div class="pt-t">'+esc(p.nome)+(p.unidade?' ('+esc(p.unidade)+')':'')+'</div><div class="pt-k2">'+esc(p.faixaTxt)+' · últimas '+pts.length+' medições</div>'
+        + '<div class="qa-chart" data-key="'+p.key+'">'+qaChartSVG(p, pts)+'<div class="qa-tip" role="status"></div></div>'
+        + '<details class="qa-table"><summary>Ver valores</summary><table><thead><tr><th>Data</th><th>Valor</th><th>Situação</th></tr></thead><tbody>'
+        + pts.slice().reverse().map(function(d){ var s2 = qaStatus(p, d.y); return '<tr><td>'+fmtDate(d.date)+(d.ponto?' · '+esc(d.ponto):'')+'</td><td>'+qaFmt(d.y, p.dec)+'</td><td>'+(s2?esc(s2.txt):'')+'</td></tr>'; }).join('')
+        + '</tbody></table></details></div></div>';
+    }
+  });
+  tiles += '</div>';
+  html += '<div class="pt-sec">Última medição em campo</div>' + tiles;
+  html += any ? '<div class="pt-sec">Histórico das medições</div>' + charts
+              : '<div class="pt-empty">Ainda não há medições de campo registradas. Elas aparecem aqui a partir das próximas visitas.</div>';
+  html += '<p class="pt-note">Faixas de referência: Portaria GM/MS nº 888/2021 (padrão de potabilidade). Toque no gráfico para ver cada medição.</p>';
+  return html;
+}
+
+/* ===================== CONTRATOS (administrador + Área do cliente) =====================
+   Contrato de manutenção e todas as revisões (aditivos, reajustes, renovações), cada uma
+   com o PDF. O cliente vê os documentos publicados do próprio cadastro e pode baixar. */
+state.contratos = state.contratos || [];
+TAB_META.contratos = { title:'Contratos', sub:'Contrato de manutenção de cada cliente e o histórico de revisões (aditivos, reajustes, renovações)' };
+var CTR_TIPOS = [['contrato','Contrato'],['aditivo','Aditivo'],['reajuste','Reajuste'],['renovacao','Renovação'],['outro','Outro documento']];
+var CTR_TIPO_CLS = { contrato:'info', aditivo:'neutral', reajuste:'warn', renovacao:'info', outro:'neutral' };
+var ctrClientFilter = '';
+function ctrTipo(k){ return tlLabel(CTR_TIPOS, k) || 'Documento'; }
+function ctrSorted(list){ return list.slice().sort(function(a,b){ return (b.vigencia||'').localeCompare(a.vigencia||'') || (b.createdAt||'').localeCompare(a.createdAt||''); }); }
+function ctrVigente(list){ return ctrSorted(list).filter(function(d){ return d.tipo==='contrato' || d.tipo==='renovacao'; })[0] || null; }
+function ctrValorAtual(list){ var today = localISO(); return ctrSorted(list).filter(function(d){ return d.valorMensal!=null && (d.vigencia||'') <= today; })[0] || null; }
+
+function renderContratos(){
+  var actions = $('#page-actions');
+  if(actions){ actions.innerHTML = '<button class="btn primary" id="btn-new-ctr">+ Novo documento</button>'; $('#btn-new-ctr').onclick = function(){ openContratoModal(null, ctrClientFilter); }; }
+  var clients = state.clients.filter(function(c){ return clientCategoryOf(c)==='manutencao' || state.contratos.some(function(d){ return d.clientId===c.id; }); })
+    .sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
+  var html = '<div class="panel"><div class="panel-head" style="flex-wrap:wrap;gap:10px;"><h2>Contratos por cliente</h2>'
+    + '<select id="ctr-filter" style="max-width:320px;"><option value="">Todos os clientes</option>'+clients.map(function(c){ return '<option value="'+c.id+'" '+(ctrClientFilter===c.id?'selected':'')+'>'+esc(c.name)+'</option>'; }).join('')+'</select></div>';
+  var shown = clients.filter(function(c){ return !ctrClientFilter || c.id===ctrClientFilter; });
+  if(!shown.length) html += '<div class="empty">Nenhum cliente de manutenção cadastrado.</div>';
+  shown.forEach(function(c){
+    var docs = ctrSorted(state.contratos.filter(function(d){ return d.clientId===c.id; })), vig = ctrVigente(docs), val = ctrValorAtual(docs);
+    html += '<div class="ctr-client"><div class="ctr-head"><strong>'+esc(c.name)+'</strong>'
+      + '<span class="hint">'+(vig ? 'Contrato vigente desde '+fmtDate(vig.vigencia) : 'Sem contrato anexado')+(val ? ' · valor mensal registrado: '+esc(fmtMoney(val.valorMensal)) : '')+'</span>'
+      + '<button class="btn small ctr-add" data-client="'+c.id+'">+ Documento</button></div>';
+    if(docs.length){
+      html += '<div class="tablewrap"><table><thead><tr><th>Vigência</th><th>Tipo</th><th>Documento</th><th>Valor mensal</th><th>Cliente vê?</th><th></th></tr></thead><tbody>'
+        + docs.map(function(d){
+            return '<tr><td class="mono">'+fmtDate(d.vigencia)+'</td><td><span class="pill '+(CTR_TIPO_CLS[d.tipo]||'neutral')+'">'+esc(ctrTipo(d.tipo))+'</span>'+(vig && vig.id===d.id ? ' <span class="pill ok">Vigente</span>' : '')+'</td>'
+              + '<td>'+esc(d.titulo||'')+(d.descricao?'<div class="hint">'+esc(d.descricao)+'</div>':'')+'</td>'
+              + '<td class="mono">'+(d.valorMensal!=null ? esc(fmtMoney(d.valorMensal)) : '—')+'</td>'
+              + '<td>'+(d.publicado ? '<span class="pill ok">Publicado</span>' : '<span class="pill neutral">Não</span>')+'</td>'
+              + '<td><div class="manut-acts">'+(d.assetId ? '<button class="btn small ctr-open" data-id="'+d.id+'">PDF</button>' : '')
+              + '<button class="btn small ctr-edit" data-id="'+d.id+'">Editar</button><button class="btn small danger ctr-del" data-id="'+d.id+'">Excluir</button></div></td></tr>';
+          }).join('') + '</tbody></table></div>';
+    }
+    html += '</div>';
+  });
+  html += '</div>';
+  $('#view').innerHTML = html;
+  $('#ctr-filter').onchange = function(){ ctrClientFilter = this.value; renderContratos(); };
+  $all('.ctr-add').forEach(function(b){ b.onclick = function(){ openContratoModal(null, b.dataset.client); }; });
+  $all('.ctr-edit').forEach(function(b){ b.onclick = function(){ openContratoModal(b.dataset.id); }; });
+  $all('.ctr-open').forEach(function(b){ b.onclick = function(){ var d = state.contratos.find(function(x){ return x.id===b.dataset.id; }); var w = window.open('', '_blank'); fbOpenReportFile(d.assetId, w); }; });
+  $all('.ctr-del').forEach(function(b){ b.onclick = function(){
+    var d = state.contratos.find(function(x){ return x.id===b.dataset.id; }); if(!d) return;
+    customConfirm('Excluir "'+(d.titulo||ctrTipo(d.tipo))+'"? O PDF também é apagado e o cliente deixa de vê-lo.', async function(){
+      if(d.assetId){ try{ await fbAssets.delete(d.assetId); }catch(e){ console.log(e); } }
+      await deleteDoc('contratos', d.id);
+    });
+  }; });
+}
+function openContratoModal(editId, presetClient){
+  var d0 = editId ? state.contratos.find(function(x){ return x.id===editId; }) : null, arquivo = null;
+  $('#modal-title').textContent = d0 ? 'Editar documento do contrato' : 'Novo documento do contrato';
+  var cOpts = '<option value="">— escolha —</option>' + state.clients.slice().sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); })
+    .map(function(c){ return '<option value="'+c.id+'">'+esc(c.name)+'</option>'; }).join('');
+  $('#modal-body').innerHTML = ''
+    + '<div class="grid2"><div class="field"><label>Cliente</label><select id="ctr-client">'+cOpts+'</select></div>'
+    + '<div class="field"><label>Tipo</label><select id="ctr-tipo">'+CTR_TIPOS.map(function(t){ return '<option value="'+t[0]+'">'+t[1]+'</option>'; }).join('')+'</select></div></div>'
+    + '<div class="field"><label>Título</label><input type="text" id="ctr-titulo" placeholder="Ex.: Contrato de manutenção mensal"></div>'
+    + '<div class="grid2"><div class="field"><label>Vale a partir de</label><input type="date" id="ctr-vig"></div>'
+    + '<div class="field"><label>Valor mensal (R$) <span class="hint">opcional</span></label><input type="text" inputmode="decimal" id="ctr-valor" placeholder="Ex.: 440,00"></div></div>'
+    + '<div class="field"><label>Resumo para o cliente <span class="hint">opcional</span></label><textarea id="ctr-desc" rows="2" placeholder="Ex.: Reajuste anual de R$ 20 por visita a partir de janeiro/2027."></textarea></div>'
+    + '<div class="field"><label>'+(d0 ? 'Trocar o PDF <span class="hint">(opcional)</span>' : 'PDF do documento')+'</label><input type="file" id="ctr-file" accept="application/pdf,.pdf"><div class="hint">Contrato assinado, aditivo, carta de reajuste… Arquivo de até 15 MB.</div></div>'
+    + '<label class="lau-opt"><input type="checkbox" id="ctr-pub" checked> Mostrar para o cliente na Área do cliente</label>'
+    + '<div class="hint" id="ctr-status"></div>';
+  $('#modal-foot').innerHTML = '<button class="btn" id="ctr-cancel">Cancelar</button><button class="btn primary" id="ctr-save">Salvar</button>';
+  var tituloAuto = { contrato:'Contrato de manutenção', aditivo:'Termo aditivo', reajuste:'Reajuste', renovacao:'Renovação do contrato', outro:'' };
+  var touched = false;
+  $('#ctr-titulo').oninput = function(){ touched = true; };
+  $('#ctr-tipo').onchange = function(){ if(!touched || !$('#ctr-titulo').value.trim()){ $('#ctr-titulo').value = tituloAuto[this.value] || ''; touched = false; } };
+  if(d0){
+    $('#ctr-client').value = d0.clientId; $('#ctr-tipo').value = d0.tipo; $('#ctr-titulo').value = d0.titulo || ''; touched = true;
+    $('#ctr-vig').value = d0.vigencia || ''; $('#ctr-valor').value = d0.valorMensal!=null ? tlFmt(d0.valorMensal, 2) : '';
+    $('#ctr-desc').value = d0.descricao || ''; $('#ctr-pub').checked = !!d0.publicado;
+  } else {
+    $('#ctr-client').value = presetClient || '';
+    var hasCtr = presetClient && state.contratos.some(function(x){ return x.clientId===presetClient && x.tipo==='contrato'; });
+    $('#ctr-tipo').value = hasCtr ? 'aditivo' : 'contrato'; $('#ctr-titulo').value = tituloAuto[$('#ctr-tipo').value];
+  }
+  $('#ctr-file').onchange = function(){ arquivo = this.files && this.files[0]; };
+  $('#ctr-cancel').onclick = closeModal;
+  $('#ctr-save').onclick = async function(){
+    var cid = $('#ctr-client').value, vig = $('#ctr-vig').value, st = $('#ctr-status');
+    if(!cid){ customAlert('Escolha o cliente.'); return; }
+    if(!vig){ customAlert('Informe a partir de quando o documento vale.'); return; }
+    if(!d0 && !arquivo){ customAlert('Escolha o PDF do documento.'); return; }
+    if(arquivo && arquivo.size > 15*1024*1024){ customAlert('O PDF tem mais de 15 MB. Reduza o arquivo (por exemplo, escaneando em menor resolução) e tente de novo.'); return; }
+    var valor = $('#ctr-valor').value.trim() ? parseMoneyBR($('#ctr-valor').value) : null;
+    if($('#ctr-valor').value.trim() && !(valor > 0)){ customAlert('Valor mensal inválido.'); return; }
+    var data = { clientId: cid, tipo: $('#ctr-tipo').value, titulo: $('#ctr-titulo').value.trim() || ctrTipo($('#ctr-tipo').value),
+      vigencia: vig, valorMensal: valor, descricao: $('#ctr-desc').value.trim(), publicado: $('#ctr-pub').checked, updatedAt: new Date().toISOString() };
+    var btn = $('#ctr-save'); btn.disabled = true;
+    try{
+      if(arquivo){
+        st.textContent = 'Guardando o PDF…';
+        var up = await fbAssets.upload(arquivo, { clientId: cid });
+        if(d0 && d0.assetId){ try{ await fbAssets.delete(d0.assetId); }catch(e){ console.log(e); } }
+        Object.assign(data, { assetId: up.id, fileName: arquivo.name });
+      } else if(d0 && d0.clientId !== cid && d0.assetId){
+        db.collection('reportFiles').doc(d0.assetId).update({ clientId: cid });
+        var mm = await db.collection('reportFiles').doc(d0.assetId).get();
+        for(var i=0;i<((mm.exists && mm.data().chunks)||0);i++) db.collection('reportFileChunks').doc(d0.assetId+'_'+i).update({ clientId: cid });
+      }
+      if(d0) await updateDoc('contratos', d0.id, data);
+      else { data.createdAt = new Date().toISOString(); await createDoc('contratos', data); }
+      closeModal(); window.PM_FB.toast('Documento salvo ✓', '', 3000);
+    }catch(e){ btn.disabled = false; st.textContent = 'Erro ao salvar: '+(e && e.message || e); }
+  };
+  openModal();
+}
+
+/* ---- cliente ---- */
+function portalContratoHTML(){
+  var docs = ctrSorted(state.contratos.filter(function(d){ return d.publicado; })), vig = ctrVigente(docs), val = ctrValorAtual(docs);
+  var html = '<h1 class="pt-h">Contrato</h1>';
+  if(!docs.length) return html + '<div class="pt-empty">O contrato ainda não foi anexado aqui. Se precisar de uma cópia, fale com a P&amp;M pelo WhatsApp.</div>';
+  html += '<div class="pt-next"><div class="pt-k">Contrato de manutenção</div>'
+    + '<div class="pt-mid">'+(vig ? 'Vigente desde '+fmtDate(vig.vigencia) : 'Documentos do contrato')+'</div>'
+    + (val ? '<div class="pt-k">Valor mensal atual: '+esc(fmtMoney(val.valorMensal))+' (desde '+fmtDate(val.vigencia)+')</div>' : '')
+    + '</div><div class="pt-sec">Documentos e revisões</div>';
+  docs.forEach(function(d){
+    html += '<div class="pt-card laudo-row"><div style="flex:1;min-width:0;">'
+      + '<div class="laudo-top"><div><div class="pt-t">'+esc(d.titulo || ctrTipo(d.tipo))+'</div><div class="pt-k2">Vale a partir de '+fmtDate(d.vigencia)+(d.valorMensal!=null ? ' · '+esc(fmtMoney(d.valorMensal))+'/mês' : '')+'</div></div>'
+      + '<span class="pill '+(CTR_TIPO_CLS[d.tipo]||'neutral')+'">'+esc(ctrTipo(d.tipo))+'</span></div>'
+      + (d.descricao ? '<div class="pt-k2" style="margin-top:8px;">'+esc(d.descricao)+'</div>' : '')
+      + (d.assetId ? '<div class="laudo-acts"><button type="button" class="btn ctr-ver" data-id="'+d.id+'">Visualizar</button><button type="button" class="btn primary ctr-baixar" data-id="'+d.id+'">Baixar</button></div>' : '')
+      + '</div></div>';
+  });
+  return html;
+}
+function wirePortalContrato(){
+  $all('.ctr-ver').forEach(function(b){ b.onclick = function(){ var d = state.contratos.find(function(x){ return x.id===b.dataset.id; }); var w = window.open('', '_blank'); fbOpenReportFile(d.assetId, w); }; });
+  $all('.ctr-baixar').forEach(function(b){ b.onclick = function(){
+    var d = state.contratos.find(function(x){ return x.id===b.dataset.id; }), c = state.clients[0] || {};
+    b.disabled = true; fbDownloadReportFile(d.assetId, safeFileSlug((d.titulo||ctrTipo(d.tipo))+'_'+(d.vigencia||'')+'_'+(c.name||''))+'.pdf').then(function(){ b.disabled = false; });
+  }; });
 }
 
 /* ===================== BOOT ===================== */
