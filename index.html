@@ -475,6 +475,21 @@ button.pt-card{cursor:pointer;}
 .pt-form select,.pt-form input{min-height:50px;}
 .pt-send{min-height:54px;font-size:17px;justify-content:center;border-radius:999px;}
 .pt-msg{color:var(--danger);font-size:14px;min-height:0;}
+/* ---------- Laudos ---------- */
+.laudo-selo{font-weight:800;letter-spacing:.02em;white-space:nowrap;}
+.laudo-row{align-items:stretch;}
+.laudo-row.bad{border-color:var(--danger);}
+.laudo-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+.laudo-nota{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--danger-soft);color:var(--ink);font-size:14px;line-height:1.45;}
+.laudo-acts{display:flex;gap:8px;margin-top:12px;}
+.laudo-acts .btn{flex:1;min-height:44px;justify-content:center;}
+.laudo-chave{margin-top:8px;word-break:break-all;}
+.pt-tile-sub{display:block;font-size:12px;font-weight:500;color:var(--ink-soft);margin-top:-6px;line-height:1.35;}
+.pt-wide{grid-column:1 / -1;flex-direction:row;align-items:center;min-height:0;}
+.pt-link{background:none;border:0;padding:0;font:inherit;color:var(--accent);text-decoration:underline;cursor:pointer;}
+.lau-opt{display:flex;align-items:center;gap:8px;margin:6px 0;font-weight:500;cursor:pointer;}
+.lau-opt input{width:auto;}
+.pt-chev{font-size:26px;color:var(--ink-soft);line-height:1;}
 
 </style>
 <script src="firebase-app-compat.js"></script>
@@ -6278,15 +6293,16 @@ function fbRunCampoSync(){
    em pedaços — o plano gratuito do Firebase não inclui armazenamento de arquivos. ---- */
 var FB_CHUNK = 700000;
 var fbAssets = {
-  upload: function(file){
+  upload: function(file, meta){
+    meta = meta || {};
     return new Promise(function(resolve, reject){
       var fr = new FileReader();
       fr.onerror = function(){ reject(fr.error); };
       fr.onload = function(){
         var data = String(fr.result), id = 'rf' + uid() + uid().slice(2);
         var n = Math.ceil(data.length / FB_CHUNK) || 1;
-        for(var i=0;i<n;i++) db.collection('reportFileChunks').doc(id+'_'+i).set({ fileId:id, i:i, data:data.slice(i*FB_CHUNK, (i+1)*FB_CHUNK) });
-        db.collection('reportFiles').doc(id).set({ name:file.name||'arquivo.pdf', type:file.type||'application/pdf', size:file.size||0, chunks:n, createdAt:new Date().toISOString() });
+        for(var i=0;i<n;i++) db.collection('reportFileChunks').doc(id+'_'+i).set({ fileId:id, i:i, clientId: meta.clientId || null, data:data.slice(i*FB_CHUNK, (i+1)*FB_CHUNK) });
+        db.collection('reportFiles').doc(id).set({ name:file.name||'arquivo.pdf', type:file.type||'application/pdf', size:file.size||0, chunks:n, clientId: meta.clientId || null, createdAt:new Date().toISOString() });
         resolve({ id:id, url:'#rf:'+id });
       };
       fr.readAsDataURL(file);
@@ -6405,7 +6421,10 @@ var SOL_STATUS = [['nova','Recebido','warn'],['andamento','Em andamento','info']
 function solStatus(k){ return SOL_STATUS.filter(function(x){ return x[0]===k; })[0] || SOL_STATUS[0]; }
 
 function fbSubscribeWhere(col, arr, field, value, after){
-  db.collection(col).where(field, '==', value).onSnapshot(function(snap){
+  var filters = Array.isArray(field) ? field : [[field, value]];
+  var q = db.collection(col);
+  filters.forEach(function(f){ q = q.where(f[0], '==', f[1]); });
+  q.onSnapshot(function(snap){
     arr.length = 0;
     snap.docs.forEach(function(d){ var o = Object.assign({}, d.data()||{}); o.id = d.id; arr.push(o); });
     if(after) after(); else { try{ render(); }catch(e){ console.log(e); } }
@@ -6421,6 +6440,7 @@ function fbStartCliente(){
   }, function(err){ console.log('db error clientesCampo', err); });
   fbSubscribeWhere('maintenanceVisits', state.visits, 'clientId', cid);
   fbSubscribeWhere('solicitacoes', state.solicitacoes, 'clientId', cid);
+  fbSubscribeWhere('reports', state.reports, [['clientId', cid], ['publicado', true]]);
   goTab('portal');
 }
 function fbStartSolicitacoesAdmin(){
@@ -6477,11 +6497,17 @@ function renderPortal(force){
         + '<div class="pt-t">'+esc(st ? 'Sistema '+tlLower(tlLabel(TALAO_STATUS, st)) : 'Relatório de visita')+'</div></div>'
         + (st ? '<span class="pill '+(TALAO_STATUS_CLS[st]||'neutral')+'">'+esc(TALAO_STATUS_SHORT[st]||'')+'</span>' : '')+'</button>';
     }
+    var lastLaudo = state.reports.filter(function(r){ return r.publicado; }).sort(function(a,b){ return (b.collectionDate||'').localeCompare(a.collectionDate||''); })[0];
+    if(lastLaudo){
+      html += '<button type="button" class="pt-card" data-go="laudos"><div style="flex:1;min-width:0;"><div class="pt-k2">Última análise do laboratório · coleta '+fmtDate(lastLaudo.collectionDate)+'</div>'
+        + '<div style="margin-top:6px;">'+laudoSelo(lastLaudo)+'</div></div><span class="pt-chev" aria-hidden="true">›</span></button>';
+    }
     html += '<div class="pt-grid">'
       + '<button type="button" class="pt-tile" data-go="solicitar" data-tipo="visita"><span class="pt-ico">+</span>Pedir visita extra</button>'
       + '<button type="button" class="pt-tile" data-go="solicitar" data-tipo="ocorrencia"><span class="pt-ico warn">!</span>Informar ocorrência</button>'
-      + '<button type="button" class="pt-tile" data-go="relatorios"><span class="pt-ico">≡</span>Relatórios de visita</button>'
-      + '<a class="pt-tile" href="https://wa.me/'+PM_WHATS+'" target="_blank" rel="noopener"><span class="pt-ico ok">✆</span>Falar no WhatsApp</a>'
+      + '<button type="button" class="pt-tile" data-go="relatorios"><span class="pt-ico">≡</span>Relatórios de visita<span class="pt-tile-sub">Manutenção, limpezas e trocas de peças</span></button>'
+      + '<button type="button" class="pt-tile" data-go="laudos"><span class="pt-ico ok">✓</span>Laudos de análise<span class="pt-tile-sub">Resultados do laboratório</span></button>'
+      + '<a class="pt-tile pt-wide" href="https://wa.me/'+PM_WHATS+'" target="_blank" rel="noopener"><span class="pt-ico ok">✆</span>Falar no WhatsApp</a>'
       + '</div>';
     var sols = state.solicitacoes.slice().sort(function(a,b){ return (b.createdAt||'').localeCompare(a.createdAt||''); }).slice(0,5);
     if(sols.length){
@@ -6494,14 +6520,16 @@ function renderPortal(force){
     }
   } else if(portalView.mode==='relatorios'){
     var list = portalDone();
-    html += '<h1 class="pt-h">Relatórios de visita</h1>';
+    html += '<h1 class="pt-h">Relatórios de visita</h1><p class="pt-k2" style="margin:-6px 2px 14px;">Tudo o que foi feito na manutenção: limpezas, ajustes, trocas de peças e as medições de campo.</p>';
     html += list.length ? list.map(function(v){
       var st = (v.talao||{}).statusFinal, m = MESES_PT[Number((v.date||'0000-01').slice(5,7))-1] || '';
       return '<button type="button" class="pt-card" data-open="'+v.id+'"><span class="pt-doc">PDF</span><div style="flex:1;min-width:0;text-align:left;">'
         + '<div class="pt-t">Relatório de visita · '+esc(m.charAt(0).toUpperCase()+m.slice(1))+'</div>'
         + '<div class="pt-k2">'+fmtDate(v.date)+(v.pointName?' · '+esc(v.pointName):'')+(st?' · '+esc(TALAO_STATUS_SHORT[st]||''):'')+'</div></div></button>';
     }).join('') : '<div class="pt-empty">Ainda não há relatórios concluídos. Depois de cada visita, o relatório aparece aqui.</div>';
-    html += '<p class="pt-note">Laudos de análise do laboratório: em breve aqui também.</p>';
+    html += '<p class="pt-note">Os resultados do laboratório ficam em <button type="button" class="pt-link" data-go="laudos">Laudos de análise</button>.</p>';
+  } else if(portalView.mode==='laudos'){
+    html += portalLaudosHTML();
   } else if(portalView.mode==='relatorio'){
     var v = state.visits.find(function(x){ return x.id===portalView.id; });
     if(!v){ portalView.mode = 'relatorios'; return renderPortal(true); }
@@ -6525,6 +6553,7 @@ function renderPortal(force){
   if($('#pt-back')) $('#pt-back').onclick = function(){ portalGo(portalView.mode==='relatorio' ? 'relatorios' : 'home'); };
   $all('[data-go]').forEach(function(b){ b.onclick = function(){ if(b.dataset.tipo) portalView.tipo = b.dataset.tipo; portalGo(b.dataset.go); }; });
   $all('[data-open]').forEach(function(b){ b.onclick = function(){ portalGo('relatorio', b.dataset.open); }; });
+  if(portalView.mode==='laudos') wirePortalLaudos();
   if(portalView.mode==='relatorio'){
     var area = $('#pt-report'), rv = state.visits.find(function(x){ return x.id===portalView.id; });
     area.innerHTML = buildVisitReportHTML(rv);
@@ -6573,6 +6602,334 @@ function renderSolicitacoes(){
   $all('.sol-st').forEach(function(sel){ sel.onchange = function(){ updateDoc('solicitacoes', sel.dataset.id, { status: sel.value, updatedAt: new Date().toISOString() }); }; });
   $all('.sol-visit').forEach(function(b){ b.onclick = function(){ openTalao(null, b.dataset.client); }; });
   fbSolBadge();
+}
+
+/* ---- Leitura do relatório de análises do laboratório (PDF com texto, ex.: LACA/MyLims) ----
+   Entrada: páginas como listas de itens {str, x, y, w}. Saída: os dados que o laudo traz.
+   Nada aqui decide sozinho: o resultado vai para a tela de conferência do administrador. */
+function laudoLines(items){
+  var its = items.filter(function(i){ return i.str && i.str.trim(); }).slice().sort(function(a,b){ return (b.y - a.y) || (a.x - b.x); });
+  var lines = [];
+  its.forEach(function(it){
+    var ln = lines.length ? lines[lines.length-1] : null;
+    if(ln && Math.abs(ln.y - it.y) <= 2.5) ln.items.push(it); else lines.push({ y: it.y, items: [it] });
+  });
+  lines.forEach(function(ln){
+    ln.items.sort(function(a,b){ return a.x - b.x; });
+    var txt = '', lastEnd = null;
+    ln.items.forEach(function(it){
+      if(lastEnd !== null){ var gap = it.x - lastEnd; txt += gap > 12 ? '  |  ' : (gap > 1.5 ? ' ' : ''); }
+      txt += it.str; lastEnd = it.x + (it.w || it.str.length * 4);
+    });
+    ln.text = txt.replace(/\s+\|\s+\|\s+/g, '  |  ').trim();
+  });
+  return lines;
+}
+function laudoNorm(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(); }
+function laudoDate(br){ var m = /(\d{2})\/(\d{2})\/(\d{4})/.exec(br||''); return m ? m[3]+'-'+m[2]+'-'+m[1] : null; }
+function parseLaudo(pages){
+  var out = { laboratorio:null, numero:null, publicacao:null, cliente:null, documento:null, chave:null, amostras:[], conclusao:null, avisos:[] };
+  var all = [];
+  pages.forEach(function(items, pi){ laudoLines(items).forEach(function(l){ l.page = pi; all.push(l); }); });
+  var texts = all.map(function(l){ return l.text; });
+  var joined = texts.join('\n');
+  var m;
+  if((m = /Relat[óo]rio de An[áa]lises\s*(?:\|\s*)?([\w./-]+)/i.exec(joined))) out.numero = m[1];
+  if((m = /Data de Publica[çc][ãa]o:\s*(\d{2}\/\d{2}\/\d{4})/i.exec(joined))) out.publicacao = laudoDate(m[1]);
+  if((m = /Cliente:\s*([^|\n]+?)\s*(?:\||\n|CNPJ)/i.exec(joined))) out.cliente = m[1].trim();
+  if((m = /CNPJ\/CPF:\s*([\d./-]+)/i.exec(joined))) out.documento = m[1];
+  if((m = /Chave de Valida[çc][ãa]o:\s*([a-f0-9]{16,})/i.exec(joined))) out.chave = m[1];
+  if(/LACA/i.test(joined)) out.laboratorio = 'Laboratório LACA';
+  // amostras: cada "Nº Amostra" abre um bloco (só no relatório principal; a lista de recebimento é ignorada)
+  var starts = [];
+  all.forEach(function(l, i){ if(/N[ºo°]\s*Amostra:/i.test(l.text) && !/Lista de Verifica/i.test(texts.slice(Math.max(0,i-3), i).join(' '))) starts.push(i); });
+  starts.forEach(function(si, k){
+    var end = k+1 < starts.length ? starts[k+1] : all.length;
+    var blk = all.slice(si, end), bt = blk.map(function(l){ return l.text; }).join('\n');
+    var a = { codigo:null, ponto:null, tipo:null, dataColeta:null, horaColeta:null, coletor:null, parametros:[], conclusao:null, interpretacao:null };
+    if((m = /N[ºo°]\s*Amostra:\s*([\w./-]+)\s*-\s*([^|\n]+)/i.exec(bt))){ a.codigo = m[1]; a.ponto = m[2].trim(); }
+    if((m = /Tipo de Amostra:\s*([^|\n]+)/i.exec(bt))) a.tipo = m[1].trim();
+    if((m = /Data Coleta:\s*(\d{2}\/\d{2}\/\d{4})\s*(\d{2}:\d{2})?/i.exec(bt))){ a.dataColeta = laudoDate(m[1]); a.horaColeta = m[2] || null; }
+    if((m = /Coletor:\s*([^|\n]+)/i.exec(bt))) a.coletor = m[1].trim();
+    if((m = /amostra\s+(N[ÃA]O\s+)?ATENDE[^\n]*/i.exec(bt))){ a.conclusao = m[1] ? 'nao_atende' : 'atende'; a.interpretacao = m[0].replace(/\s*\|\s*/g,' ').trim(); }
+    // tabela de resultados: colunas pela posição do cabeçalho
+    var hi = -1;
+    blk.forEach(function(l, i){ if(hi < 0 && /An[áa]lise/.test(l.text) && /Resultado/.test(l.text)) hi = i; });
+    if(hi >= 0){
+      var h = blk[hi].items;
+      function hx(re){ var it = h.filter(function(i){ return re.test(i.str); })[0]; return it ? it.x : null; }
+      var xRes = hx(/Resultado/), xLQ = hx(/^\s*LQ\s*$/), xInc = hx(/Incerteza/), xRef = hx(/Refer[êe]ncia/);
+      var xVmp = null;
+      blk.slice(Math.max(0,hi-2), hi+2).forEach(function(l){ l.items.forEach(function(i){ if(xVmp === null && /portaria|PRC|VMP|Anexo|alterado/i.test(i.str) && i.x > (xRes||0)) xVmp = i.x; }); });
+      var bounds = [xRes, xVmp, xLQ || xInc || xRef].map(function(v){ return v === null ? Infinity : v - 6; });
+      for(var r = hi+1; r < blk.length; r++){
+        var t = blk[r].text;
+        if(/Especifica[çc][õo]es|Interpreta[çc][õo]es|^Notas/i.test(t)) break;
+        if(/portaria GM\/MS|^\(alterado/i.test(t) && blk[r].items.length <= 2) continue;
+        var cols = ['', '', ''];
+        blk[r].items.forEach(function(it){
+          var c = it.x < bounds[0] ? 0 : (it.x < bounds[1] ? 1 : (it.x < bounds[2] ? 2 : 3));
+          if(c < 3) cols[c] += (cols[c] ? ' ' : '') + it.str.trim();
+        });
+        if(cols[0] && cols[1] && !/Microbiologia|F[íi]sico|Qu[íi]mic|Organol/i.test(cols[0]))
+          a.parametros.push({ nome: cols[0], resultado: cols[1], vmp: cols[2] || '' });
+      }
+    }
+    if(!a.parametros.length) out.avisos.push('Não consegui ler a tabela de parâmetros da amostra '+(a.codigo||k+1)+'. Confira no PDF.');
+    out.amostras.push(a);
+  });
+  if(!out.amostras.length) out.avisos.push('Não encontrei a identificação da amostra (Nº Amostra). Preencha manualmente.');
+  var cs = out.amostras.map(function(a){ return a.conclusao; });
+  if(cs.length && cs.every(function(c){ return c === 'atende'; })) out.conclusao = 'atende';
+  else if(cs.some(function(c){ return c === 'nao_atende'; })) out.conclusao = 'nao_atende';
+  else out.avisos.push('Não encontrei a conclusão do laboratório (ATENDE / NÃO ATENDE). Marque manualmente conferindo o PDF.');
+  if(out.amostras.length > 1) out.avisos.push('Este relatório tem '+out.amostras.length+' amostras.');
+  return out;
+}
+async function readLaudoPdf(arrayBuffer){
+  var pdfjs = window.__pdfjs || (window.__pdfjs = await import('./pdf.min.mjs'));
+  pdfjs.GlobalWorkerOptions.workerSrc = './pdf.worker.min.mjs';
+  var doc = await pdfjs.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+  var pages = [];
+  for(var p = 1; p <= doc.numPages; p++){
+    var page = await doc.getPage(p), tc = await page.getTextContent();
+    pages.push(tc.items.map(function(i){ return { str: i.str, x: i.transform[4], y: i.transform[5], w: i.width }; }));
+  }
+  return parseLaudo(pages);
+}
+
+/* ===================== LAUDOS DE ANÁLISE (laboratório) =====================
+   Administrador: anexa o PDF do laboratório, o app LÊ o relatório e preenche tudo;
+   você confere, confirma Própria/Imprópria e decide se publica para o cliente.
+   Cliente: vê só os laudos PUBLICADOS do próprio cadastro, com selo e Visualizar/Baixar. */
+state.reports = state.reports || [];
+var LAUDO_SELO = { propria: ['PRÓPRIA PARA CONSUMO','ok'], impropria: ['IMPRÓPRIA PARA CONSUMO','danger'] };
+function laudoSelo(r){
+  var s = LAUDO_SELO[r && r.conclusao];
+  return s ? '<span class="pill '+s[1]+' laudo-selo">'+s[0]+'</span>' : '<span class="pill neutral">Sem conclusão</span>';
+}
+function laudoMesTitulo(k){ var m = MESES_PT[Number(k.slice(5,7))-1] || ''; return m.charAt(0).toUpperCase()+m.slice(1)+' de '+k.slice(0,4); }
+function onlyDigits(s){ return String(s||'').replace(/\D/g,''); }
+function laudoMatchClient(info){
+  var doc = onlyDigits(info.documento);
+  if(doc){ var byDoc = state.clients.find(function(c){ return onlyDigits(c.cpfCnpj) === doc; }); if(byDoc) return byDoc.id; }
+  var n = laudoNorm(info.cliente);
+  if(!n) return '';
+  var byName = state.clients.find(function(c){ var cn = laudoNorm(c.name); return cn && (cn === n || cn.indexOf(n) >= 0 || n.indexOf(cn) >= 0); });
+  return byName ? byName.id : '';
+}
+
+/* ---- arquivo: abrir ou baixar ---- */
+async function fbReportFileBlob(id){
+  var meta = await db.collection('reportFiles').doc(id).get();
+  if(!meta.exists) throw new Error('arquivo não encontrado');
+  var m = meta.data(), parts = [];
+  for(var i=0;i<(m.chunks||0);i++){ var c = await db.collection('reportFileChunks').doc(id+'_'+i).get(); parts.push(c.exists ? c.data().data : ''); }
+  var dataUrl = parts.join(''), b64 = dataUrl.slice(dataUrl.indexOf(',')+1), bin = atob(b64), arr = new Uint8Array(bin.length);
+  for(var j=0;j<bin.length;j++) arr[j] = bin.charCodeAt(j);
+  return { blob: new Blob([arr], { type: m.type || 'application/pdf' }), name: m.name || 'laudo.pdf' };
+}
+async function fbDownloadReportFile(id, nome){
+  try{
+    var f = await fbReportFileBlob(id);
+    var url = URL.createObjectURL(f.blob), a = document.createElement('a');
+    a.href = url; a.download = nome || f.name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 5000);
+  }catch(e){ customAlert('Não foi possível baixar o arquivo agora ('+(e && e.message || e)+'). Verifique a internet e tente de novo.'); }
+}
+function laudoFileId(r){ return r.assetId || ((r.assetUrl||'').indexOf('#rf:')===0 ? r.assetUrl.slice(4) : ''); }
+function laudoFileName(r){
+  var c = state.clients.find(function(x){ return x.id===r.clientId; }) || {};
+  return 'Laudo_'+(r.collectionDate||'')+'_'+safeFileSlug(c.name || 'cliente')+'.pdf';
+}
+
+/* ---- administrador: aba Relatórios (laudos) ---- */
+function renderRelatorios(){
+  var manutClients = state.clients.filter(function(c){ return isActiveClient(c) && clientCategoryOf(c)==='manutencao'; })
+    .slice().sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
+  var html = '<div class="panel" style="margin-bottom:20px;"><div class="panel-head"><h2>Status de coleta por cliente</h2></div>';
+  if(!manutClients.length) html += '<div class="empty">Nenhum cliente ativo de manutenção cadastrado ainda.</div></div>';
+  else {
+    html += '<div class="tablewrap"><table><thead><tr><th>Cliente</th><th>Última coleta</th><th>Último resultado</th><th>Laudos</th><th>Situação</th></tr></thead><tbody>';
+    manutClients.forEach(function(c){
+      var last = clientLastReport(c.id), count = state.reports.filter(function(r){ return r.clientId===c.id; }).length, st = reportStatusFor(c.id);
+      html += '<tr><td>'+esc(c.name)+'</td><td class="mono">'+(last?fmtDate(last.collectionDate):'—')+'</td><td>'+(last?laudoSelo(last):'—')+'</td><td class="mono">'+count+'</td>'
+        + '<td><span class="pill '+st.cls+'">'+esc(st.label)+'</span></td></tr>';
+    });
+    html += '</tbody></table></div></div>';
+  }
+  var opts = '<option value="todos" '+(reportClientFilter==='todos'?'selected':'')+'>Todos os clientes</option>'
+    + state.clients.slice().sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); })
+      .map(function(c){ return '<option value="'+c.id+'" '+(reportClientFilter===c.id?'selected':'')+'>'+esc(c.name)+'</option>'; }).join('');
+  var list = state.reports.filter(function(r){ return reportClientFilter==='todos' || r.clientId===reportClientFilter; })
+    .sort(function(a,b){ return (b.collectionDate||'').localeCompare(a.collectionDate||''); });
+  html += '<div class="panel"><div class="panel-head" style="flex-wrap:wrap;gap:10px;"><h2>Laudos de análise ('+list.length+')</h2><select id="report-filter" style="max-width:320px;">'+opts+'</select></div>';
+  if(!list.length) html += '<div class="empty">Nenhum laudo ainda. Use "+ Novo relatório" e escolha o PDF do laboratório: o app lê os dados sozinho.</div></div>';
+  else {
+    html += '<div class="tablewrap"><table><thead><tr><th>Coleta</th><th>Cliente / amostra</th><th>Nº</th><th>Resultado</th><th>Cliente vê?</th><th></th></tr></thead><tbody>';
+    list.forEach(function(r){
+      var amostra = r.pointName || r.amostraIdent || '';
+      html += '<tr><td class="mono">'+fmtDate(r.collectionDate)+'</td>'
+        + '<td>'+esc(clientName(r.clientId))+(amostra?'<div class="hint">'+esc(amostra)+'</div>':'')+'</td>'
+        + '<td class="mono">'+esc(r.numero||'—')+'</td>'
+        + '<td>'+laudoSelo(r)+(r.conclusao==='impropria' && !r.notaCliente ? '<div class="hint" style="color:var(--danger)">sem nota ao cliente</div>' : '')+'</td>'
+        + '<td>'+(r.publicado ? '<span class="pill ok">Publicado</span>' : '<span class="pill neutral">Não</span>')+'</td>'
+        + '<td><div class="manut-acts">'
+        + (laudoFileId(r) ? '<button class="btn small lau-open" data-id="'+r.id+'">PDF</button>' : '')
+        + '<button class="btn small lau-edit" data-id="'+r.id+'">Editar</button>'
+        + '<button class="btn small danger lau-del" data-id="'+r.id+'">Excluir</button></div></td></tr>';
+    });
+    html += '</tbody></table></div></div>';
+  }
+  $('#view').innerHTML = html;
+  $('#report-filter').addEventListener('change', function(){ reportClientFilter = this.value; renderRelatorios(); });
+  $all('.lau-open').forEach(function(b){ b.onclick = function(){ var r = state.reports.find(function(x){ return x.id===b.dataset.id; }); var w = window.open('', '_blank'); fbOpenReportFile(laudoFileId(r), w); }; });
+  $all('.lau-edit').forEach(function(b){ b.onclick = function(){ openReportModal(b.dataset.id); }; });
+  $all('.lau-del').forEach(function(b){ b.onclick = function(){
+    var r = state.reports.find(function(x){ return x.id===b.dataset.id; }); if(!r) return;
+    customConfirm('Excluir este laudo? O PDF também é apagado e o cliente deixa de vê-lo.', async function(){
+      var fid = laudoFileId(r); if(fid){ try{ await fbAssets.delete(fid); }catch(e){ console.log(e); } }
+      await deleteDoc('reports', r.id);
+    });
+  }; });
+}
+
+function openReportModal(editId){
+  var r0 = editId ? state.reports.find(function(x){ return x.id===editId; }) : null;
+  var lido = null, arquivo = null;
+  $('#modal-title').textContent = r0 ? 'Editar laudo' : 'Novo laudo de análise';
+  var clientOpts = '<option value="">— escolha —</option>' + state.clients.slice().sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); })
+    .map(function(c){ return '<option value="'+c.id+'">'+esc(c.name)+'</option>'; }).join('');
+  $('#modal-body').innerHTML = ''
+    + (r0 ? '' : '<div class="field"><label>PDF do laboratório</label><input type="file" id="lau-file" accept="application/pdf,.pdf"><div class="hint">O app lê o relatório e preenche os campos abaixo. Confira antes de salvar.</div></div>')
+    + '<div id="lau-read" class="hint"></div>'
+    + '<div class="grid2"><div class="field"><label>Cliente</label><select id="lau-client">'+clientOpts+'</select></div>'
+    + '<div class="field"><label>Data da coleta</label><input type="date" id="lau-date"></div></div>'
+    + '<div class="grid2"><div class="field"><label>Identificação da amostra</label><input type="text" id="lau-amostra" placeholder="Ex.: Torneira próximo à bomba"></div>'
+    + '<div class="field" id="lau-point-wrap" style="display:none;"><label>Ponto de manutenção</label><select id="lau-point"></select></div></div>'
+    + '<div class="grid2"><div class="field"><label>Nº do relatório</label><input type="text" id="lau-num"></div>'
+    + '<div class="field"><label>Chave de validação</label><input type="text" id="lau-chave"></div></div>'
+    + '<div id="lau-params"></div>'
+    + '<div class="field"><label>Resultado para o cliente</label>'
+    + '<label class="lau-opt"><input type="radio" name="lau-conc" value="propria"> <span class="pill ok laudo-selo">PRÓPRIA PARA CONSUMO</span></label>'
+    + '<label class="lau-opt"><input type="radio" name="lau-conc" value="impropria"> <span class="pill danger laudo-selo">IMPRÓPRIA PARA CONSUMO</span></label>'
+    + '<div class="hint" id="lau-interp"></div></div>'
+    + '<div class="field"><label>Nota para o cliente <span class="hint">(obrigatória se imprópria: o que foi encontrado e as providências já tomadas)</span></label><textarea id="lau-nota" rows="3"></textarea></div>'
+    + '<label class="lau-opt"><input type="checkbox" id="lau-pub"> Mostrar este laudo para o cliente na Área do cliente</label>'
+    + '<div class="hint" id="lau-status"></div>';
+  $('#modal-foot').innerHTML = '<button class="btn" id="lau-cancel">Cancelar</button><button class="btn primary" id="lau-save">Salvar</button>';
+  $('#lau-client').innerHTML = clientOpts;
+  function fillPoints(sel){
+    var c = state.clients.find(function(x){ return x.id===$('#lau-client').value; }), pts = clientPoints(c);
+    $('#lau-point-wrap').style.display = pts.length ? '' : 'none';
+    $('#lau-point').innerHTML = '<option value="">—</option>' + pts.map(function(p){ return '<option value="'+esc(p.id)+'" '+(p.id===sel?'selected':'')+'>'+esc(p.name)+'</option>'; }).join('');
+  }
+  function setConc(v){ $all('input[name="lau-conc"]').forEach(function(x){ x.checked = x.value===v; }); }
+  function paramsTable(amostras){
+    if(!amostras || !amostras.length) return '';
+    return amostras.map(function(a){
+      return '<div class="field"><label>Parâmetros lidos'+(amostras.length>1 ? ' — '+esc(a.ponto||a.codigo||'') : '')+'</label>'
+        + (a.parametros && a.parametros.length ? '<div class="tablewrap"><table><thead><tr><th>Análise</th><th>Resultado</th><th>Limite (VMP)</th></tr></thead><tbody>'
+          + a.parametros.map(function(p){ return '<tr><td>'+esc(p.nome)+'</td><td>'+esc(p.resultado)+'</td><td class="hint">'+esc(p.vmp)+'</td></tr>'; }).join('') + '</tbody></table></div>'
+          : '<div class="hint">Nenhum parâmetro lido.</div>') + '</div>';
+    }).join('');
+  }
+  if(r0){
+    $('#lau-client').value = r0.clientId || ''; fillPoints(r0.pointId);
+    $('#lau-date').value = r0.collectionDate || ''; $('#lau-amostra').value = r0.amostraIdent || '';
+    $('#lau-num').value = r0.numero || ''; $('#lau-chave').value = r0.chave || '';
+    $('#lau-params').innerHTML = paramsTable(r0.amostras);
+    setConc(r0.conclusao); $('#lau-nota').value = r0.notaCliente || ''; $('#lau-pub').checked = !!r0.publicado;
+    if(r0.interpretacao) $('#lau-interp').textContent = 'O laboratório escreveu: "'+r0.interpretacao+'"';
+  }
+  $('#lau-client').onchange = function(){ fillPoints(''); };
+  if($('#lau-file')) $('#lau-file').onchange = async function(){
+    arquivo = this.files && this.files[0]; if(!arquivo) return;
+    var info = $('#lau-read'); info.innerHTML = 'Lendo o relatório…';
+    try{
+      lido = await readLaudoPdf(await arquivo.arrayBuffer());
+      var a0 = lido.amostras[0] || {};
+      var cid = laudoMatchClient(lido);
+      $('#lau-client').value = cid; fillPoints('');
+      $('#lau-date').value = a0.dataColeta || '';
+      $('#lau-amostra').value = lido.amostras.map(function(a){ return a.ponto; }).filter(Boolean).join(' / ');
+      $('#lau-num').value = lido.numero || ''; $('#lau-chave').value = lido.chave || '';
+      $('#lau-params').innerHTML = paramsTable(lido.amostras);
+      setConc(lido.conclusao==='atende' ? 'propria' : (lido.conclusao==='nao_atende' ? 'impropria' : ''));
+      $('#lau-pub').checked = lido.conclusao==='atende';
+      var interp = lido.amostras.map(function(a){ return a.interpretacao; }).filter(Boolean).join(' ');
+      $('#lau-interp').textContent = interp ? 'O laboratório escreveu: "'+interp+'"' : '';
+      info.innerHTML = '<span style="color:var(--ok)">✓ Relatório lido.</span> Confira os dados abaixo.'
+        + (!cid ? '<br><strong>Não achei o cliente "'+esc(lido.cliente||'?')+'" no cadastro — escolha na lista.</strong>' : '')
+        + (lido.avisos.length ? '<br>'+lido.avisos.map(esc).join('<br>') : '');
+    }catch(e){
+      console.log('leitura do laudo', e); lido = null;
+      info.innerHTML = '<strong>Não consegui ler este PDF</strong> ('+esc(e && e.message || e)+'). Preencha os campos à mão — o arquivo ainda será anexado.';
+    }
+  };
+  $('#lau-cancel').onclick = closeModal;
+  $('#lau-save').onclick = async function(){
+    var st = $('#lau-status'), cid = $('#lau-client').value, conc = (document.querySelector('input[name="lau-conc"]:checked')||{}).value || '';
+    var nota = $('#lau-nota').value.trim(), pub = $('#lau-pub').checked;
+    if(!r0 && !arquivo){ customAlert('Escolha o PDF do laboratório.'); return; }
+    if(!cid){ customAlert('Escolha o cliente.'); return; }
+    if(!conc){ customAlert('Marque se a água está própria ou imprópria para consumo.'); return; }
+    if(conc==='impropria' && pub && nota.length < 10){ customAlert('Para mostrar um laudo IMPRÓPRIO ao cliente, escreva antes a nota: o que foi encontrado e as providências já tomadas.'); return; }
+    var c = state.clients.find(function(x){ return x.id===cid; }), pt = pointById(c, $('#lau-point').value);
+    var data = {
+      clientId: cid, collectionDate: $('#lau-date').value || todayISO(),
+      amostraIdent: $('#lau-amostra').value.trim(), pointId: pt ? pt.id : null, pointName: pt ? pt.name : null,
+      numero: $('#lau-num').value.trim(), chave: $('#lau-chave').value.trim(),
+      conclusao: conc, notaCliente: nota, publicado: pub, updatedAt: new Date().toISOString()
+    };
+    var btn = $('#lau-save'); btn.disabled = true;
+    try{
+      if(r0){
+        if(r0.clientId !== cid && laudoFileId(r0)){ var fid0 = laudoFileId(r0); db.collection('reportFiles').doc(fid0).update({ clientId: cid }); var mm = await db.collection('reportFiles').doc(fid0).get(); for(var i=0;i<((mm.exists && mm.data().chunks)||0);i++) db.collection('reportFileChunks').doc(fid0+'_'+i).update({ clientId: cid }); }
+        await updateDoc('reports', r0.id, data);
+      } else {
+        st.textContent = 'Guardando o PDF…';
+        var up = await fbAssets.upload(arquivo, { clientId: cid });
+        Object.assign(data, {
+          assetId: up.id, assetUrl: up.url, fileName: arquivo.name, contentType: arquivo.type || 'application/pdf', uploadedAt: new Date().toISOString(), notes: '',
+          laboratorio: lido && lido.laboratorio || '', publicacao: lido && lido.publicacao || null, documentoLaudo: lido && lido.documento || '',
+          conclusaoLab: lido && lido.conclusao || null,
+          interpretacao: lido ? lido.amostras.map(function(a){ return a.interpretacao; }).filter(Boolean).join(' ') : '',
+          amostras: lido ? lido.amostras.map(function(a){ return { codigo:a.codigo, ponto:a.ponto, tipo:a.tipo, dataColeta:a.dataColeta, horaColeta:a.horaColeta, coletor:a.coletor, conclusao:a.conclusao, parametros:a.parametros }; }) : []
+        });
+        await createDoc('reports', data);
+      }
+      closeModal();
+      window.PM_FB.toast(pub ? 'Laudo salvo e publicado para o cliente ✓' : 'Laudo salvo (o cliente ainda não vê) ✓', '', 3500);
+    }catch(e){ btn.disabled = false; st.textContent = 'Erro ao salvar: '+(e && e.message || e); }
+  };
+  openModal();
+}
+
+/* ---- cliente: aba Laudos de análise ---- */
+function portalLaudosHTML(){
+  var list = state.reports.filter(function(r){ return r.publicado; }).sort(function(a,b){ return (b.collectionDate||'').localeCompare(a.collectionDate||''); });
+  var html = '<h1 class="pt-h">Laudos de análise</h1><p class="pt-k2" style="margin:-6px 2px 14px;">Análises da sua água feitas por laboratório parceiro, a partir das coletas da P&amp;M.</p>';
+  if(!list.length) return html + '<div class="pt-empty">Ainda não há laudos publicados. Assim que o laboratório entregar o resultado da próxima coleta, ele aparece aqui.</div>';
+  var byM = {};
+  list.forEach(function(r){ var k = (r.collectionDate||'').slice(0,7) || 'sem-data'; (byM[k] = byM[k] || []).push(r); });
+  Object.keys(byM).sort().reverse().forEach(function(k){
+    html += '<div class="pt-sec">'+(k==='sem-data' ? 'Sem data' : laudoMesTitulo(k))+'</div>';
+    byM[k].forEach(function(r){
+      var am = r.pointName || r.amostraIdent || '';
+      html += '<div class="pt-card laudo-row'+(r.conclusao==='impropria'?' bad':'')+'"><div style="flex:1;min-width:0;">'
+        + '<div class="laudo-top"><div><div class="pt-t">Coleta '+fmtDate(r.collectionDate)+'</div><div class="pt-k2">'+esc(am)+(r.numero?' · Nº '+esc(r.numero):'')+'</div></div>'+laudoSelo(r)+'</div>'
+        + (r.notaCliente ? '<div class="laudo-nota">'+esc(r.notaCliente)+'</div>' : '')
+        + '<div class="laudo-acts"><button type="button" class="btn lau-ver" data-id="'+r.id+'">Visualizar</button><button type="button" class="btn primary lau-baixar" data-id="'+r.id+'">Baixar</button></div>'
+        + (r.chave ? '<div class="pt-k2 laudo-chave">Chave de validação do laboratório: <span class="mono">'+esc(r.chave)+'</span></div>' : '')
+        + '</div></div>';
+    });
+  });
+  return html;
+}
+function wirePortalLaudos(){
+  $all('.lau-ver').forEach(function(b){ b.onclick = function(){ var r = state.reports.find(function(x){ return x.id===b.dataset.id; }); var w = window.open('', '_blank'); fbOpenReportFile(laudoFileId(r), w); }; });
+  $all('.lau-baixar').forEach(function(b){ b.onclick = function(){ var r = state.reports.find(function(x){ return x.id===b.dataset.id; }); b.disabled = true; fbDownloadReportFile(laudoFileId(r), laudoFileName(r)).then(function(){ b.disabled = false; }); }; });
 }
 
 /* ===================== BOOT ===================== */
