@@ -805,6 +805,29 @@ button.pt-card{cursor:pointer;}
   else { start(); if(!navigator.onLine) onOffline(); }
 })();
 
+/* O Chrome oferece "Salvar endereço?" ao ver campos de rua/CEP/telefone. Os campos do app
+   (cadastros, relatórios) não são do usuário, então marcamos todos como "não preencher".
+   O login fica de fora, para o Gerenciador de Senhas continuar funcionando. */
+(function(){
+  function marcar(root){
+    var els = (root.querySelectorAll ? root.querySelectorAll('input, select, textarea') : []);
+    for(var i=0;i<els.length;i++){
+      var el = els[i];
+      if(el.id==='pmfb-email' || el.id==='pmfb-pass' || el.type==='password' || el.dataset.acOk) continue;
+      el.setAttribute('autocomplete', 'off');
+      el.setAttribute('data-form-type', 'other'); // dica extra para gerenciadores
+      el.dataset.acOk = '1';
+    }
+  }
+  function iniciar(){
+    marcar(document);
+    new MutationObserver(function(muts){
+      for(var i=0;i<muts.length;i++){ var n = muts[i].addedNodes; for(var j=0;j<n.length;j++){ if(n[j].nodeType===1) marcar(n[j]); } }
+    }).observe(document.body, { childList: true, subtree: true });
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar); else iniciar();
+})();
+
 </script>
 </head>
 <body>
