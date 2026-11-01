@@ -4351,6 +4351,7 @@ function openClientModal(id, presetCategory, presetStatus){
   $('#modal-foot').innerHTML = foot;
   $('#m-cancel').onclick = closeModal;
   if(c) $('#m-delete').onclick = function(){ customConfirm('Excluir este cliente? Os registros de manutenção/análise associados não serão apagados.', function(){ deleteDoc('clients', c.id); closeModal(); }); };
+  var pkgChangeOk = false;
   $('#m-save').onclick = async function(){
     var systemsOut = [];
     $all('.f-system').forEach(function(cb){
@@ -4361,7 +4362,15 @@ function openClientModal(id, presetCategory, presetStatus){
       }
     });
     var pkgBoxes = $all('#modal-analises-body .f-package');
-    var pkgIdsOut = pkgBoxes.length ? pkgBoxes.filter(function(cb){return cb.checked;}).map(function(cb){return cb.value;}) : pkgIds.slice();
+    var pkgTouched = pkgBoxes.length > 0; // a janela Análises foi aberta para ESTE cliente
+    var pkgIdsOut = pkgTouched ? pkgBoxes.filter(function(cb){return cb.checked;}).map(function(cb){return cb.value;}) : pkgIds.slice();
+    // Pacotes travados: só mudam com confirmação explícita
+    var pkgChanged = c && pkgTouched && (pkgIdsOut.slice().sort().join('|') !== pkgIds.slice().sort().join('|'));
+    if(pkgChanged && !pkgChangeOk){
+      customConfirm('Alterar os pacotes contratados deste cliente?\n\nAntes: '+analisesSummaryText(pkgIds)+'\nDepois: '+analisesSummaryText(pkgIdsOut)+'\n\nIsso muda o Item que sai no PDF do laboratório.', function(){ pkgChangeOk = true; $('#m-save').click(); });
+      if($('#modal-confirm-body')) $('#modal-confirm-body').style.whiteSpace = 'pre-line';
+      return;
+    }
     var data = {
       name: $('#f-name').value.trim(),
       clientCategory: $('#f-category').value,
@@ -4402,6 +4411,7 @@ function openClientModal(id, presetCategory, presetStatus){
     else if(inclEl && inclEl.checked) data.monthlyValueRef = futR[0].effectiveFrom;
     else if(c && hasClientValue(c) && Number(c.monthlyValue)===mv && c.monthlyValueRef && !(inclEl && c.monthlyValueRef>=futR[0].effectiveFrom)) data.monthlyValueRef = c.monthlyValueRef;
     else data.monthlyValueRef = todayISO().slice(0,7);
+    if(c && !pkgTouched){ delete data.packageIds; delete data.looseParamsSelected; } // não mexe nos pacotes salvos
     if(c){
       await updateDoc('clients', c.id, data);
     } else {
