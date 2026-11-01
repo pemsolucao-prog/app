@@ -6329,7 +6329,7 @@ function campoAnalisesLab(c, pkgs){
     var avulsas = !!pk.looseParams;
     var params = avulsas ? (c.looseParamsSelected || []) : (pk.params || []);
     if(!params.length) return;
-    out.push({ item: pk.order != null ? Number(pk.order) : null, pacote: avulsas ? 'Análises avulsas' : (pk.name || ''), tipoAmostra: pk.sampleType || '', proposta: String(pk.sourceProposal || '').replace(/\s*\(.*\)\s*$/, ''), parametros: params.map(paramLabel) });
+    out.push({ item: pk.order != null ? Number(pk.order) : null, pacote: avulsas ? 'Análises avulsas' : (pk.name || ''), tipoAmostra: pk.sampleType || '', proposta: String(pk.sourceProposal || '').replace(/\s*[\(—].*$/, '').trim(), parametros: params.map(paramLabel) });
   });
   return out;
 }
@@ -7299,7 +7299,15 @@ function campoLabBanner(){
 }
 function labClient(v){ return state.clients.find(function(c){ return c.id===v.clientId; }) || {}; }
 function labHoraAgora(){ var d = new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
-function labAnalises(c){ return Array.isArray(c.analisesLab) ? c.analisesLab : []; }
+function labAnalises(c){
+  // Técnico: vem pronto no cadastro de campo. Administrador: calcula na hora a partir do cadastro completo e dos pacotes.
+  if(Array.isArray(c.analisesLab) && c.analisesLab.length) return c.analisesLab;
+  if(c.packageIds && state.packages && state.packages.length){
+    var m = {}; state.packages.forEach(function(p){ m[p.id] = p; });
+    return campoAnalisesLab(c, m);
+  }
+  return [];
+}
 function labAmostraIdent(v){ var a = (v.talao && v.talao.analises) || {}; return a.localColeta || v.pointName || ''; }
 
 function renderCampoLab(){
