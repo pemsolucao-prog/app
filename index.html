@@ -524,6 +524,34 @@ button.pt-card{cursor:pointer;}
 .ctr-client{padding:12px 18px;border-top:1px solid var(--line);}
 .ctr-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;}
 .ctr-head .hint{flex:1;min-width:180px;}
+/* ---------- Campo → laboratório ---------- */
+.campo-lab{display:flex;align-items:center;gap:12px;justify-content:space-between;background:var(--accent-soft);border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin:4px 0 14px;}
+.campo-lab-t{font-weight:800;color:var(--ink);font-size:16px;}
+.campo-lab-s{font-size:13.5px;color:var(--ink-soft);margin-top:2px;}
+.campo-lab .btn{min-height:44px;}
+.lab-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:6px 0 4px;}
+.lab-row label{display:flex;flex-direction:column;gap:6px;font-size:14px;font-weight:700;color:var(--ink);}
+.lab-row input{min-height:46px;font:inherit;font-size:16px;border:1px solid var(--line);border-radius:12px;padding:0 12px;background:var(--surface);color:var(--ink);}
+.lab-item{display:flex;gap:12px;align-items:flex-start;cursor:pointer;}
+.lab-check input{width:24px;height:24px;margin-top:2px;}
+.lab-warn{margin-top:8px;font-size:13px;color:var(--warn);font-weight:600;}
+.lab-acts{display:flex;gap:10px;margin-top:14px;}
+.lab-acts .btn{flex:1;min-height:50px;justify-content:center;font-size:16px;}
+.lab-share{background:#25D366 !important;color:#073B1E !important;border-color:#25D366 !important;font-weight:800;}
+.lab-offscreen{position:absolute;left:-10000px;top:0;width:800px;}
+.lab-ver{display:block;margin:10px auto 0;min-height:40px;}
+.lab-doc-head{display:flex;gap:16px;align-items:center;border-bottom:2px solid #123F73;padding-bottom:10px;margin-bottom:10px;}
+.lab-doc-head img{height:54px;width:auto;}
+.lab-doc-head h2{margin:0;font-size:19px;color:#123F73;}
+.lab-info{width:100%;border-collapse:collapse;margin-bottom:10px;font-size:12px;}
+.lab-info td{border:1px solid #C9D6E5;padding:5px 7px;vertical-align:top;width:50%;}
+.lab-am{margin-bottom:10px;page-break-inside:avoid;}
+.lab-am-n{font-weight:800;color:#fff;background:#123F73;padding:3px 8px;border-radius:4px 4px 0 0;font-size:12.5px;display:inline-block;}
+.lab-am table{width:100%;border-collapse:collapse;font-size:12.5px;}
+.lab-am th{text-align:left;background:#EEF4FA;color:#123F73;width:24%;border:1px solid #C9D6E5;padding:5px 7px;font-weight:700;vertical-align:top;}
+.lab-am td{border:1px solid #C9D6E5;padding:5px 7px;vertical-align:top;}
+.lab-sign{display:flex;flex-direction:column;gap:12px;margin-top:18px;font-size:12.5px;}
+.lab-am tr.lab-item-row td{background:#FFF7E0;font-size:13.5px;}
 
 </style>
 <script src="firebase-app-compat.js"></script>
@@ -6291,11 +6319,25 @@ function fbRenderUserBox(){
 /* ---- Projeção "clientesCampo": o cadastro do cliente SEM valores nem dados fiscais.
    É o que o técnico consegue ler. Quem mantém é o app do administrador: a cada mudança
    no cadastro, a cópia de campo é atualizada sozinha. ---- */
-var CAMPO_FIELDS = ['name','contactName','phone','addressStreet','addressNeighborhood','addressCity','addressState','addressZip','addressLocation','clientCategory','status','systems','visitsPerMonth','looseParamsSelected','createdAt','proposalNumber'];
-function campoProjection(c){
+// cpfCnpj entra porque o laboratório precisa dele na relação de amostras (aba Campo → laboratório).
+var CAMPO_FIELDS = ['name','contactName','phone','addressStreet','addressNeighborhood','addressCity','addressState','addressZip','addressLocation','clientCategory','status','systems','visitsPerMonth','looseParamsSelected','createdAt','proposalNumber','cpfCnpj'];
+// Análises que o cliente contrata, já com nomes (sem preços): o técnico leva isso ao laboratório.
+function campoAnalisesLab(c, pkgs){
+  var out = [];
+  (c.packageIds || []).forEach(function(id){
+    var pk = pkgs && pkgs[id]; if(!pk) return;
+    var avulsas = !!pk.looseParams;
+    var params = avulsas ? (c.looseParamsSelected || []) : (pk.params || []);
+    if(!params.length) return;
+    out.push({ item: pk.order != null ? Number(pk.order) : null, pacote: avulsas ? 'Análises avulsas' : (pk.name || ''), tipoAmostra: pk.sampleType || '', proposta: String(pk.sourceProposal || '').replace(/\s*\(.*\)\s*$/, ''), parametros: params.map(paramLabel) });
+  });
+  return out;
+}
+function campoProjection(c, pkgs){
   var o = {};
   CAMPO_FIELDS.forEach(function(k){ if(c[k] !== undefined && c[k] !== null) o[k] = c[k]; });
   if(Array.isArray(c.points)) o.points = c.points.map(function(p){ var q = Object.assign({}, p); delete q.value; return q; });
+  o.analisesLab = campoAnalisesLab(c, pkgs);
   return o;
 }
 function stableJSON(v){
@@ -6303,21 +6345,22 @@ function stableJSON(v){
   if(v && typeof v === 'object') return '{'+Object.keys(v).filter(function(k){ return k!=='id' && v[k]!==undefined; }).sort().map(function(k){ return JSON.stringify(k)+':'+stableJSON(v[k]); }).join(',')+'}';
   return JSON.stringify(v === undefined ? null : v);
 }
-var fbSync = { clients:null, campo:null, timer:null };
+var fbSync = { clients:null, campo:null, packages:null, timer:null };
 function fbStartCampoSync(){
   function snapToMap(snap){ var m = {}; snap.docs.forEach(function(d){ m[d.id] = d.data() || {}; }); return m; }
   db.collection('clients').onSnapshot(function(s){ fbSync.clients = snapToMap(s); fbQueueCampoSync(); }, function(e){ console.log('sync clients', e); });
   db.collection('clientesCampo').onSnapshot(function(s){ fbSync.campo = snapToMap(s); fbQueueCampoSync(); }, function(e){ console.log('sync campo', e); });
+  db.collection('packages').onSnapshot(function(s){ fbSync.packages = snapToMap(s); fbQueueCampoSync(); }, function(e){ console.log('sync packages', e); });
 }
 function fbQueueCampoSync(){
   clearTimeout(fbSync.timer);
   fbSync.timer = setTimeout(fbRunCampoSync, 1200);
 }
 function fbRunCampoSync(){
-  if(!fbSync.clients || !fbSync.campo) return; // espera as duas listas chegarem
+  if(!fbSync.clients || !fbSync.campo || !fbSync.packages) return; // espera as três listas chegarem
   var n = 0;
   Object.keys(fbSync.clients).forEach(function(id){
-    var p = campoProjection(fbSync.clients[id]);
+    var p = campoProjection(fbSync.clients[id], fbSync.packages);
     if(!fbSync.campo[id] || stableJSON(fbSync.campo[id]) !== stableJSON(p)){ db.collection('clientesCampo').doc(id).set(p); n++; }
   });
   Object.keys(fbSync.campo).forEach(function(id){
@@ -6413,6 +6456,7 @@ function campoCard(v, kind){
     + '</div></div>';
 }
 function renderCampo(){
+  if(campoMode === 'lab') return renderCampoLab();
   var today = localISO(), in7 = localISO(new Date(Date.now()+7*86400000));
   var me = TECNICO_PADRAO;
   var vs = state.visits.filter(function(v){ return campoScope==='todas' || v.tecnicoId===me; });
@@ -6426,6 +6470,7 @@ function renderCampo(){
   var html = '<div class="campo-wrap">'
     + '<p class="campo-hello">Olá'+(nome?', '+esc(nome.split(' ')[0]):'')+'</p>'
     + '<p class="campo-date">'+dias[d.getDay()]+', '+fmtDate(today)+' · '+hoje.length+' visita'+(hoje.length===1?'':'s')+' para hoje'+(feitas.length?' · '+feitas.length+' concluída'+(feitas.length===1?'':'s'):'')+'</p>'
+    + campoLabBanner()
     + '<div class="campo-toggle" role="group" aria-label="Quais visitas mostrar"><button type="button" data-scope="minhas" aria-pressed="'+(campoScope==='minhas')+'">Só as minhas</button><button type="button" data-scope="todas" aria-pressed="'+(campoScope==='todas')+'">Todas</button></div>';
   function sec(title, list, kind, empty){
     if(!list.length && !empty) return '';
@@ -6444,6 +6489,7 @@ function renderCampo(){
   }; });
   $all('.campo-toggle button').forEach(function(b){ b.onclick = function(){ campoScope = b.dataset.scope; renderCampo(); }; });
   $('#campo-new').onclick = function(){ openTalao(null); };
+  if($('#campo-lab-go')) $('#campo-lab-go').onclick = function(){ campoMode = 'lab'; labState = null; renderCampo(); window.scrollTo(0,0); };
 }
 
 /* ===================== PORTAL DO CLIENTE (perfil 'cliente') =====================
@@ -7232,6 +7278,133 @@ function wirePortalContrato(){
     var d = state.contratos.find(function(x){ return x.id===b.dataset.id; }), c = state.clients[0] || {};
     b.disabled = true; fbDownloadReportFile(d.assetId, safeFileSlug((d.titulo||ctrTipo(d.tipo))+'_'+(d.vigencia||'')+'_'+(c.name||''))+'.pdf').then(function(){ b.disabled = false; });
   }; });
+}
+
+/* ===================== CAMPO → AMOSTRAS PARA O LABORATÓRIO =====================
+   No dia da coleta, o técnico gera com um toque a relação das amostras (PDF) e manda
+   pelo WhatsApp para a recepção do laboratório, que digita no MyLims a partir dela.
+   Os dados vêm dos relatórios de visita com "Coleta de amostras: Sim". */
+var campoMode = 'agenda';
+var labState = null; // { date, sel:{id:true}, hora, file, blob }
+var LAB_NOME = 'LACA';
+function labColetas(date){
+  return state.visits.filter(function(v){ return v.date===date && v.talao && v.talao.analises && v.talao.analises.coleta==='sim'; })
+    .sort(function(a,b){ return ((a.talao.analises.horaColeta||'') ).localeCompare(b.talao.analises.horaColeta||'') || visitClientLabel(a).localeCompare(visitClientLabel(b)); });
+}
+function campoLabBanner(){
+  var n = labColetas(localISO()).length;
+  return '<div class="campo-lab"><div><div class="campo-lab-t">Amostras para o laboratório</div>'
+    + '<div class="campo-lab-s">'+(n ? n+' coleta'+(n===1?'':'s')+' registrada'+(n===1?'':'s')+' hoje' : 'Gere a relação das amostras para entregar no '+LAB_NOME)+'</div></div>'
+    + '<button type="button" class="btn primary" id="campo-lab-go">Abrir</button></div>';
+}
+function labClient(v){ return state.clients.find(function(c){ return c.id===v.clientId; }) || {}; }
+function labHoraAgora(){ var d = new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+function labAnalises(c){ return Array.isArray(c.analisesLab) ? c.analisesLab : []; }
+function labAmostraIdent(v){ var a = (v.talao && v.talao.analises) || {}; return a.localColeta || v.pointName || ''; }
+
+function renderCampoLab(){
+  if(!labState) labState = { date: localISO(), sel: null, hora: labHoraAgora(), file: null };
+  var list = labColetas(labState.date);
+  if(!labState.sel){ labState.sel = {}; list.forEach(function(v){ labState.sel[v.id] = true; }); }
+  var html = '<div class="campo-wrap"><button type="button" class="pt-back" id="lab-back">← Voltar à agenda</button>'
+    + '<p class="campo-hello">Amostras para o laboratório</p>'
+    + '<p class="campo-date">Gere a relação das amostras e mande pelo WhatsApp para a recepção do '+LAB_NOME+'. Ela traz tudo o que eles digitam no sistema.</p>'
+    + '<div class="lab-row"><label>Dia da coleta<input type="date" id="lab-date" value="'+esc(labState.date)+'"></label>'
+    + '<label>Hora da entrega<input type="time" id="lab-hora" value="'+esc(labState.hora)+'"></label></div>';
+  if(!list.length){
+    html += '<div class="campo-empty">Nenhuma visita deste dia está com <strong>Coleta de amostras: Sim</strong>. Marque a coleta no relatório da visita e ela aparece aqui.</div></div>';
+    $('#view').innerHTML = html; labWire(); return;
+  }
+  html += '<div class="campo-sec">Amostras <span class="n">'+list.length+'</span></div>';
+  list.forEach(function(v){
+    var c = labClient(v), a = v.talao.analises || {}, an = labAnalises(c), falta = [];
+    if(!labAmostraIdent(v)) falta.push('local da coleta');
+    if(!a.horaColeta) falta.push('hora da coleta');
+    if(!an.length) falta.push('análises contratadas (fale com o Marlon)');
+    html += '<label class="campo-card lab-item"><div class="lab-check"><input type="checkbox" class="lab-sel" value="'+v.id+'" '+(labState.sel[v.id]?'checked':'')+'></div><div style="flex:1;min-width:0;">'
+      + '<div class="campo-name">'+esc(visitClientLabel(v))+'</div>'
+      + '<div class="campo-meta">'+esc(labAmostraIdent(v) || 'Local da coleta não informado')+' · coleta '+esc(a.horaColeta || '--:--')+'</div>'
+      + '<div class="campo-meta">'+esc(an.map(function(x){ return (x.item != null ? 'Item '+x.item+' — ' : '')+x.pacote; }).join(' + ') || 'Sem análises cadastradas')+'</div>'
+      + (falta.length ? '<div class="lab-warn">Falta: '+esc(falta.join(', '))+'. <button type="button" class="pt-link lab-fix" data-id="'+v.id+'">Abrir relatório</button></div>' : '')
+      + '</div></label>';
+  });
+  html += '<div class="lab-acts"><button type="button" class="btn primary" id="lab-gen">Gerar PDF</button>'
+    + (labState.file ? '<button type="button" class="btn lab-share" id="lab-share">Enviar pelo WhatsApp</button>' : '') + '</div>'
+    + (labState.file ? '<button type="button" class="pt-link lab-ver" id="lab-ver">Ver o PDF</button>' : '')
+    + '<div class="hint" id="lab-hint">'+(labState.file ? 'PDF pronto: '+esc(labState.file.name) : 'O PDF sai em A4, pronto para mandar no WhatsApp da recepção.')+'</div>'
+    + '<div class="lab-offscreen" aria-hidden="true"><div id="lab-doc" class="doc-page print-doc doc-compact"></div></div></div>';
+  $('#view').innerHTML = html;
+  labWire();
+  $('#lab-doc').innerHTML = labDocHTML(list.filter(function(v){ return labState.sel[v.id]; }));
+}
+function labWire(){
+  $('#lab-back').onclick = function(){ campoMode = 'agenda'; labState = null; renderCampo(); };
+  $('#lab-date').onchange = function(){ labState = { date: this.value || localISO(), sel: null, hora: $('#lab-hora').value, file: null }; renderCampoLab(); };
+  $('#lab-hora').onchange = function(){ labState.hora = this.value; labState.file = null; renderCampoLab(); };
+  $all('.lab-sel').forEach(function(cb){ cb.onchange = function(){ labState.sel[cb.value] = cb.checked; labState.file = null; renderCampoLab(); }; });
+  $all('.lab-fix').forEach(function(b){ b.onclick = function(e){ e.preventDefault(); campoMode = 'agenda'; labState = null; openTalao(b.dataset.id); }; });
+  if($('#lab-gen')) $('#lab-gen').onclick = labGerar;
+  if($('#lab-share')) $('#lab-share').onclick = labCompartilhar;
+  if($('#lab-ver')) $('#lab-ver').onclick = function(){ var u = URL.createObjectURL(labState.file); window.open(u, '_blank'); setTimeout(function(){ URL.revokeObjectURL(u); }, 60000); };
+}
+function labDocHTML(list){
+  var coletores = list.map(function(v){ var t = tecnicoById(v.tecnicoId) || {}; return t.nome || t.curto || ''; }).filter(Boolean)
+    .filter(function(n, i, arr){ return arr.indexOf(n)===i; });
+  if(!coletores.length){ var tec = tecnicoById(TECNICO_PADRAO) || {}; coletores = [(fbProfile && fbProfile.nome) || tec.nome || '']; }
+  var props = {};
+  list.forEach(function(v){ labAnalises(labClient(v)).forEach(function(x){ if(x.proposta) props[x.proposta] = true; }); });
+  var h = '<div class="lab-doc-head"><img src="'+COMPANY_LOGO_DATA_URI+'" alt="P&amp;M Soluções em Água"><div><h2>Relação de amostras para análise</h2>'
+    + '<div>Entrega ao laboratório '+LAB_NOME+' · '+fmtDate(labState.date)+' às '+esc(labState.hora || '--:--')+'</div></div></div>'
+    + '<table class="lab-info"><tr><td><b>Contratante</b><br>P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11</td><td><b>Contato</b><br>(22) 98160-2353<br>pemsolucao@gmail.com</td></tr>'
+    + '<tr><td><b>Coletor</b><br>'+esc(coletores.join(', '))+'</td><td><b>Proposta comercial</b><br>'+(Object.keys(props).length ? esc(Object.keys(props).map(function(x){ return x+' ('+LAB_NOME+')'; }).join(', ')) : LAB_NOME)+'</td></tr>'
+    + '<tr><td><b>Tipo de coleta</b><br>Simples</td><td><b>Plano de amostragem</b><br>P&amp;M Soluções</td></tr>'
+    + '<tr><td><b>Responsabilidade da coleta</b><br>P&amp;M Soluções</td><td><b>Total de amostras</b><br>'+list.length+'</td></tr></table>';
+  list.forEach(function(v, i){
+    var c = labClient(v), a = v.talao.analises || {}, an = labAnalises(c), col = tecnicoById(v.tecnicoId) || {};
+    var end = [c.addressStreet, c.addressNeighborhood, [c.addressCity, c.addressState].filter(Boolean).join(' - ')].filter(Boolean).join(', ');
+    var tipos = an.map(function(x){ return x.tipoAmostra; }).filter(Boolean).filter(function(t, j, arr){ return arr.indexOf(t)===j; }).join(' / ') || 'Água Tratada';
+    var campo = [a.cloro!=null ? 'Cloro residual livre '+tlFmt(a.cloro,2)+' mg/L' : '', a.ph!=null ? 'pH '+tlFmt(a.ph,1) : '', a.temperatura!=null ? 'Temperatura '+tlFmt(a.temperatura,1)+' °C' : ''].filter(Boolean).join(' · ');
+    h += '<div class="lab-am"><div class="lab-am-n">Amostra '+(i+1)+'</div><table>'
+      + '<tr><th>Cliente</th><td colspan="3"><b>'+esc(c.name || visitClientLabel(v))+'</b>'+(c.cpfCnpj ? ' · CPF/CNPJ '+esc(c.cpfCnpj) : '')+'</td></tr>'
+      + '<tr><th>Endereço</th><td colspan="3">'+esc(end || '—')+'</td></tr>'
+      + '<tr><th>Identificação da amostra</th><td colspan="3"><b>'+esc(labAmostraIdent(v) || '—')+'</b>'+(v.pointName && a.localColeta ? ' ('+esc(v.pointName)+')' : '')+'</td></tr>'
+      + '<tr class="lab-item-row"><th>Item da proposta '+LAB_NOME+'</th><td colspan="3">'+(an.length ? an.map(function(x){ return '<b>'+(x.item != null ? 'Item '+x.item : 'Item —')+'</b> — '+esc(x.pacote); }).join('<br>') : 'Confirmar com a P&amp;M')+'</td></tr>'
+      + '<tr><th>Tipo de amostra</th><td>'+esc(tipos)+'</td><th>Coleta</th><td>'+fmtDate(v.date)+' às '+esc(a.horaColeta || '--:--')+'</td></tr>'
+      + '<tr><th>Coletor</th><td>'+esc(col.curto || col.nome || '—')+'</td><th>Medições de campo</th><td>'+esc(campo || '—')+'</td></tr>'
+      + '<tr><th>Análises solicitadas</th><td colspan="3">'+(an.length ? an.map(function(x){ return '<b>'+esc(x.pacote)+':</b> '+esc(x.parametros.join(', ')); }).join('<br>') : 'Confirmar com a P&amp;M')+'</td></tr>'
+      + '</table></div>';
+  });
+  h += '<div class="lab-sign"><div>Recebido por (laboratório): ______________________________</div><div>Data e hora: ____/____/______ às ____:____</div></div>';
+  return h;
+}
+async function labGerar(){
+  var list = labColetas(labState.date).filter(function(v){ return labState.sel[v.id]; });
+  if(!list.length){ customAlert('Marque ao menos uma amostra.'); return; }
+  var hint = $('#lab-hint'), btn = $('#lab-gen'); btn.disabled = true; hint.textContent = 'Gerando o PDF…';
+  try{
+    var blob = await buildPaginatedPdfBlob($('#lab-doc'), {});
+    var name = 'Amostras_PM_'+labState.date+'_'+(labState.hora||'').replace(':','h')+'.pdf';
+    labState.file = new File([blob], name, { type: 'application/pdf' });
+    // registra a hora de entrega no relatório de cada visita
+    list.forEach(function(v){
+      var t = JSON.parse(JSON.stringify(v.talao || {})); t.analises = t.analises || {};
+      if(t.analises.horaEntregaLab !== labState.hora){ t.analises.horaEntregaLab = labState.hora; updateDoc('maintenanceVisits', v.id, { talao: t }); }
+    });
+    renderCampoLab();
+    window.PM_FB.toast('PDF pronto ✓ Toque em "Enviar pelo WhatsApp".', '', 3500);
+  }catch(e){
+    console.log('PDF laboratório', e); btn.disabled = false; hint.textContent = '';
+    customAlert('Não foi possível gerar o PDF agora. Tente de novo.');
+  }
+}
+async function labCompartilhar(){
+  var f = labState && labState.file; if(!f) return;
+  var texto = 'Olá! Segue a relação das amostras da P&M Soluções em Água entregues hoje ('+fmtDate(labState.date)+').';
+  try{
+    if(navigator.canShare && navigator.canShare({ files: [f] })){ await navigator.share({ files: [f], title: f.name, text: texto }); return; }
+  }catch(e){ if(e && e.name === 'AbortError') return; console.log('share', e); }
+  await deliverPdfBlob(f, f.name, 'a relação de amostras');
+  window.PM_FB.toast('PDF salvo. Anexe no WhatsApp do laboratório.', '', 4000);
 }
 
 /* ===================== BOOT ===================== */
