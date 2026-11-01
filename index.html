@@ -1555,7 +1555,9 @@ function analisesSummaryText(ids){
   var pkgs = ids.map(function(id){ return state.packages.find(function(p){ return p.id===id; }); }).filter(Boolean);
   var total = pkgs.reduce(function(sum,p){ return sum + (Number(p.price)||0); }, 0);
   var hasLoose = pkgs.some(function(p){ return p.looseParams===true; });
-  return pkgs.length+' pacote(s) selecionado(s) — '+fmtMoney(total)+(hasLoose?' (inclui análises avulsas)':'');
+  var nomes = pkgs.slice().sort(function(a,b){ return (a.order!=null?a.order:999)-(b.order!=null?b.order:999); })
+    .map(function(p){ return (p.order!=null ? 'Item '+p.order+' — ' : '')+p.name; }).join(' · ');
+  return nomes+' — '+fmtMoney(total)+(hasLoose?' (inclui análises avulsas)':'');
 }
 function syncAnalisesSummaryFromDom(){
   var el = $('#analises-summary');
@@ -4103,6 +4105,10 @@ function openClientModal(id, presetCategory, presetStatus){
   var pkgIds = (c && c.packageIds) || [];
   var looseSelected = (c && c.looseParamsSelected) || [];
   var category = c ? clientCategoryOf(c) : (presetCategory || 'manutencao');
+  // As caixinhas de pacotes ficam em outra janela (Análises). Limpa as que sobraram do cliente
+  // aberto antes, para não gravar os pacotes de um cliente no outro.
+  if($('#modal-analises-body')) $('#modal-analises-body').innerHTML = '';
+  onPackagesUpdated = null;
   $('#modal-title').textContent = c ? 'Editar cliente' : 'Novo cliente';
   var body = '<div class="field"><label>Nome / Razão social</label><input type="text" id="f-name" value="'+esc(c?c.name:'')+'"></div>'
     + '<div class="field"><label>Tipo de cliente</label><select id="f-category">'
@@ -4253,7 +4259,7 @@ function openClientModal(id, presetCategory, presetStatus){
     var container = $('#pkg-section');
     if(!container) return; // modal was closed/replaced meanwhile
     var alreadyChecked = $all('.f-package').filter(function(cb){return cb.checked;}).map(function(cb){return cb.value;});
-    var effectiveIds = alreadyChecked.length ? alreadyChecked : pkgIds;
+    var effectiveIds = $all('#modal-analises-body .f-package').length ? alreadyChecked : pkgIds;
     var selectablePkgs = state.packages.filter(function(p){ return p.active!==false; });
     var html = '';
     if(selectablePkgs.length===0){
@@ -4354,7 +4360,8 @@ function openClientModal(id, presetCategory, presetStatus){
         systemsOut.push({type:type, subtype: sub ? sub.value : null});
       }
     });
-    var pkgIdsOut = $all('.f-package').filter(function(cb){return cb.checked;}).map(function(cb){return cb.value;});
+    var pkgBoxes = $all('#modal-analises-body .f-package');
+    var pkgIdsOut = pkgBoxes.length ? pkgBoxes.filter(function(cb){return cb.checked;}).map(function(cb){return cb.value;}) : pkgIds.slice();
     var data = {
       name: $('#f-name').value.trim(),
       clientCategory: $('#f-category').value,
