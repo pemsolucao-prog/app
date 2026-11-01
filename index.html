@@ -552,6 +552,13 @@ button.pt-card{cursor:pointer;}
 .lab-am td{border:1px solid #C9D6E5;padding:5px 7px;vertical-align:top;}
 .lab-sign{display:flex;flex-direction:column;gap:12px;margin-top:18px;font-size:12.5px;}
 .lab-am tr.lab-item-row td{background:#FFF7E0;font-size:13.5px;}
+/* Solicitações: excluir, resolvidas */
+.sol-acts{flex-wrap:wrap;}
+.sol-acts .sol-visit{flex:1;}
+.sol-toggle{margin-top:6px;}
+.sol-res{margin-top:10px;display:grid;gap:8px;}
+.sol-res-row{display:flex;gap:8px;align-items:center;background:var(--surface,#fff);border:1px solid var(--line,#e2e8f0);border-radius:12px;padding:10px 12px;}
+.pt-count{min-width:28px;height:28px;border-radius:999px;background:var(--brand,#1B5FA8);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;padding:0 8px;}
 
 </style>
 <script src="firebase-app-compat.js"></script>
@@ -4445,8 +4452,10 @@ var manutView = { mode:'list', id:null, clientFilter:'' };
 var manutDirty = true;
 var manutCollapsed = {}; // meses abertos/recolhidos pelo usuário nesta sessão (padrão: só o mês atual aberto)
 function openVisitModal(id){ openTalao(id || null); } // nome antigo, usado pelo Painel
-function openTalao(id, presetClientId){
-  manutView = { mode:'edit', id:id||null, presetClientId:presetClientId||null, clientFilter:manutView.clientFilter };
+function openTalao(id, presetClientId, opts){
+  opts = opts || {};
+  manutView = { mode:'edit', id:id||null, presetClientId:presetClientId||null, clientFilter:manutView.clientFilter,
+    presetSol: opts.sol || null, presetTalao: opts.talao || null, presetPoint: opts.point || null };
   manutDirty = true;
   goTab('manutencoes');
   window.scrollTo(0,0);
@@ -4650,8 +4659,8 @@ function renderTalaoEditor(){
     + '</div>'
     + '</div></div>';
   $('#view').innerHTML = html;
-  var t0 = (v && v.talao) ? v.talao : null;
-  var curPoint = v ? (v.pointId || '') : '';
+  var t0 = (v && v.talao) ? v.talao : (manutView.presetTalao || null);
+  var curPoint = v ? (v.pointId || '') : (manutView.presetPoint || '');
 
   function fillBody(cId, useSaved){
     var cRaw = state.clients.find(function(x){ return x.id===cId; });
@@ -4812,6 +4821,7 @@ function renderTalaoEditor(){
     if(v){ await updateDoc('maintenanceVisits', v.id, data); return v.id; }
     data.createdAt = new Date().toISOString();
     data.systemsChecked = [];
+    if(manutView.presetSol) data.solicitacaoId = manutView.presetSol; // visita aberta a partir de uma solicitação do cliente
     return await createDoc('maintenanceVisits', data);
   }
   $('#tl-save').onclick = async function(){ var id = await save(false); if(id){ customAlert('Relatório salvo.'); manutView.id = id; } };
@@ -6308,6 +6318,7 @@ async function initFirebaseSession(){
   if(fbProfile.tecnicoId && tecnicoById(fbProfile.tecnicoId)) TECNICO_PADRAO = fbProfile.tecnicoId;
   fbStartCampoSync();
   fbStartSolicitacoesAdmin();
+  fbStartExtrasSync();
   subscribe('contratos', state.contratos);
   return 'admin';
 }
@@ -6606,21 +6617,18 @@ function renderPortal(force){
     html += '<div class="pt-grid">'
       + '<button type="button" class="pt-tile" data-go="solicitar" data-tipo="visita"><span class="pt-ico">+</span>Pedir visita extra</button>'
       + '<button type="button" class="pt-tile" data-go="solicitar" data-tipo="ocorrencia"><span class="pt-ico warn">!</span>Informar ocorrência</button>'
+      + (function(){ var n = ptExtrasSplit().aguardando.length;
+          return '<button type="button" class="pt-tile pt-wide" data-go="extras"><span class="pt-ico">↻</span><span style="flex:1;">Visitas extras<span class="pt-tile-sub" style="margin-top:2px;">'
+            + (n ? n+' pedido'+(n>1?'s':'')+' aguardando o técnico' : 'Seus pedidos: aguardando e concluídos')+'</span></span>'
+            + (n ? '<span class="pt-count">'+n+'</span>' : '<span class="pt-chev" aria-hidden="true">›</span>')+'</button>'; })()
       + '<button type="button" class="pt-tile" data-go="relatorios"><span class="pt-ico">≡</span>Relatórios de visita<span class="pt-tile-sub">Manutenção, limpezas e trocas de peças</span></button>'
       + '<button type="button" class="pt-tile" data-go="laudos"><span class="pt-ico ok">✓</span>Laudos de análise<span class="pt-tile-sub">Resultados do laboratório</span></button>'
       + '<button type="button" class="pt-tile" data-go="qualidade"><span class="pt-ico">◔</span>Qualidade da água<span class="pt-tile-sub">pH, cloro e temperatura</span></button>'
       + '<button type="button" class="pt-tile" data-go="contrato"><span class="pt-ico">§</span>Contrato<span class="pt-tile-sub">Contrato e revisões</span></button>'
       + '<a class="pt-tile pt-wide" href="https://wa.me/'+PM_WHATS+'" target="_blank" rel="noopener"><span class="pt-ico ok">✆</span>Falar no WhatsApp</a>'
       + '</div>';
-    var sols = state.solicitacoes.slice().sort(function(a,b){ return (b.createdAt||'').localeCompare(a.createdAt||''); }).slice(0,5);
-    if(sols.length){
-      html += '<div class="pt-sec">Seus pedidos</div>' + sols.map(function(s){
-        var ss = solStatus(s.status);
-        return '<div class="pt-card"><div style="flex:1;min-width:0;"><div class="pt-t">'+(s.tipo==='ocorrencia'?'Ocorrência':'Visita extra')+(s.pointName?' · '+esc(s.pointName):'')+'</div>'
-          + '<div class="pt-k2">'+esc((s.texto||'').slice(0,90))+'</div><div class="pt-k2">Enviado em '+fmtDate((s.createdAt||'').slice(0,10))+'</div></div>'
-          + '<span class="pill '+ss[2]+'">'+ss[1]+'</span></div>';
-      }).join('');
-    }
+  } else if(portalView.mode==='extras'){
+    html += portalExtrasHTML();
   } else if(portalView.mode==='relatorios'){
     var list = portalDone();
     html += '<h1 class="pt-h">Relatórios de visita</h1><p class="pt-k2" style="margin:-6px 2px 14px;">Tudo o que foi feito na manutenção: limpezas, ajustes, trocas de peças e as medições de campo.</p>';
@@ -6657,9 +6665,10 @@ function renderPortal(force){
   html += '</div>';
   $('#view').innerHTML = html;
   $('#pt-out').onclick = function(){ customConfirm('Sair da Área do cliente neste aparelho?', function(){ window.PM_FB.signOut(); }); };
-  if($('#pt-back')) $('#pt-back').onclick = function(){ portalGo(portalView.mode==='relatorio' ? 'relatorios' : 'home'); };
+  if($('#pt-back')) $('#pt-back').onclick = function(){ portalGo(portalView.mode==='relatorio' ? (portalView.from || 'relatorios') : 'home'); };
   $all('[data-go]').forEach(function(b){ b.onclick = function(){ if(b.dataset.tipo) portalView.tipo = b.dataset.tipo; portalGo(b.dataset.go); }; });
-  $all('[data-open]').forEach(function(b){ b.onclick = function(){ portalGo('relatorio', b.dataset.open); }; });
+  $all('[data-open]').forEach(function(b){ b.onclick = function(){ portalView.from = portalView.mode==='extras' ? 'extras' : 'relatorios'; portalGo('relatorio', b.dataset.open); }; });
+  if(portalView.mode==='extras') $all('.pt-ex-tab').forEach(function(b){ b.onclick = function(){ portalView.extrasTab = b.dataset.tab; renderPortal(true); }; });
   if(portalView.mode==='laudos') wirePortalLaudos();
   if(portalView.mode==='qualidade') qaWireCharts();
   if(portalView.mode==='contrato') wirePortalContrato();
@@ -6682,7 +6691,7 @@ function renderPortal(force){
         status: 'nova', createdAt: new Date().toISOString(), criadoPor: (fbUser && fbUser.email) || ''
       });
       window.PM_FB.toast('Pedido enviado para a P&M ✓', '', 3500);
-      portalGo('home');
+      portalView.extrasTab = 'aguardando'; portalGo('extras');
     });
   }
 }
@@ -6711,6 +6720,59 @@ function renderSolicitacoes(){
   $all('.sol-st').forEach(function(sel){ sel.onchange = function(){ updateDoc('solicitacoes', sel.dataset.id, { status: sel.value, updatedAt: new Date().toISOString() }); }; });
   $all('.sol-visit').forEach(function(b){ b.onclick = function(){ openTalao(null, b.dataset.client); }; });
   fbSolBadge();
+}
+
+/* ---- Área do cliente: painel de visitas extras (pedidos aguardando o técnico x concluídos) ---- */
+function ptExtrasSplit(){
+  // Pedidos do cliente + visitas extras que a P&M agendou sem pedido (viram "itens" no mesmo formato)
+  var itens = state.solicitacoes.slice();
+  state.visits.forEach(function(v){
+    if(!v.talao || v.talao.visitType!=='extra' || v.solicitacaoId) return;
+    if(itens.some(function(s){ return s.visitId===v.id; })) return;
+    itens.push({ id: 'v-'+v.id, visitId: v.id, tipo: 'visita', texto: '', pointName: v.pointName || null, semPedido: true,
+      status: v.status==='Concluída' ? 'resolvida' : 'andamento', createdAt: v.createdAt || v.date || '' });
+  });
+  var ord = function(a,b){ return (b.createdAt||'').localeCompare(a.createdAt||''); };
+  return {
+    aguardando: itens.filter(function(s){ return s.status!=='resolvida'; }).sort(ord),
+    concluidas: itens.filter(function(s){ return s.status==='resolvida'; })
+      .sort(function(a,b){ var va = solVisit(a), vb = solVisit(b); return ((vb&&vb.date)||b.resolvidaEm||'').localeCompare((va&&va.date)||a.resolvidaEm||''); })
+  };
+}
+function portalExtrasHTML(){
+  var sp = ptExtrasSplit(), tab = portalView.extrasTab || (sp.aguardando.length || !sp.concluidas.length ? 'aguardando' : 'concluidas');
+  portalView.extrasTab = tab;
+  var html = '<h1 class="pt-h">Visitas extras</h1><p class="pt-k2" style="margin:-6px 2px 14px;">Seus pedidos de visita extra e as ocorrências que você informou.</p>'
+    + '<div class="campo-toggle" role="group" aria-label="Situação">'
+    + '<button type="button" class="pt-ex-tab" data-tab="aguardando" aria-pressed="'+(tab==='aguardando')+'">Aguardando o técnico ('+sp.aguardando.length+')</button>'
+    + '<button type="button" class="pt-ex-tab" data-tab="concluidas" aria-pressed="'+(tab==='concluidas')+'">Concluídas ('+sp.concluidas.length+')</button></div>'
+    + '<div style="height:12px;"></div>';
+  var tipoTxt = function(s){ return (s.tipo==='ocorrencia' ? 'Ocorrência' : 'Visita extra')+(s.pointName ? ' · '+esc(s.pointName) : ''); };
+  if(tab==='aguardando'){
+    if(!sp.aguardando.length) html += '<div class="pt-empty">Nenhum pedido aguardando. Para pedir uma visita extra ou informar uma ocorrência, use os botões da página inicial.</div>';
+    html += sp.aguardando.map(function(s){
+      var v = solVisit(s), ss = solStatus(s.status);
+      var linha = v && v.status!=='Concluída' ? 'Visita agendada para <strong>'+esc(portalDateLong(v.date))+'</strong>'
+        : (s.status==='andamento' ? 'A P&amp;M já está cuidando do seu pedido.' : 'Recebido. A P&amp;M vai confirmar o dia da visita.');
+      return '<div class="pt-card"><div style="flex:1;min-width:0;"><div class="pt-t">'+tipoTxt(s)+'</div>'
+        + (s.semPedido ? '<div class="pt-k2">Visita extra agendada pela P&amp;M</div>' : '<div class="pt-k2">'+esc(s.texto||'')+'</div>'
+        + '<div class="pt-k2">Enviado em '+fmtDate((s.createdAt||'').slice(0,10))+(s.dataPreferida ? ' · dia preferido '+fmtDate(s.dataPreferida) : '')+'</div>')
+        + '<div class="pt-k2" style="margin-top:4px;color:var(--ink);">'+linha+'</div></div>'
+        + '<span class="pill '+(v && v.status!=='Concluída' ? 'info' : ss[2])+'">'+(v && v.status!=='Concluída' ? 'Agendada' : ss[1])+'</span></div>';
+    }).join('');
+  } else {
+    if(!sp.concluidas.length) html += '<div class="pt-empty">Ainda não há visitas extras concluídas.</div>';
+    html += sp.concluidas.map(function(s){
+      var v = solVisit(s), feito = v && v.talao && v.talao.parecer;
+      var inner = '<div style="flex:1;min-width:0;text-align:left;"><div class="pt-t">'+tipoTxt(s)+'</div>'
+        + (s.semPedido ? '' : '<div class="pt-k2">Pedido: '+esc(s.texto||'')+'</div>')
+        + (feito ? '<div class="pt-k2">Feito: '+esc(feito)+'</div>' : '')
+        + '<div class="pt-k2" style="margin-top:4px;color:var(--ink);">'+(v ? 'Visita em '+fmtDate(v.date) : 'Resolvido em '+fmtDate((s.resolvidaEm||s.updatedAt||'').slice(0,10)))+'</div></div>';
+      return v ? '<button type="button" class="pt-card" data-open="'+v.id+'">'+inner+'<span class="pill ok">Concluída</span><span class="pt-chev" aria-hidden="true">›</span></button>'
+               : '<div class="pt-card">'+inner+'<span class="pill ok">Concluída</span></div>';
+    }).join('');
+  }
+  return html;
 }
 
 /* ---- Leitura do relatório de análises do laboratório (PDF com texto, ex.: LACA/MyLims) ----
@@ -7430,6 +7492,184 @@ async function labCompartilhar(){
   }catch(e){ if(e && e.name === 'AbortError') return; console.log('share', e); }
   await deliverPdfBlob(f, f.name, 'a relação de amostras');
   window.PM_FB.toast('PDF salvo. Anexe no WhatsApp do laboratório.', '', 4000);
+}
+
+/* ===================== SOLICITAÇÕES → VISITA REALIZADA → FATURAMENTO =====================
+   - Excluir solicitação.
+   - "Resolvido" tira o pedido da lista e transforma em visita concluída (aba Manutenções);
+     se tiver valor, lança em Contas a receber (Financeiro).
+   - Toda visita EXTRA concluída com valor (inclusive as do Zaqueu, pela agenda) gera a
+     conta a receber sozinha, uma única vez. Só a partir de EXTRA_FAT_DESDE, para não
+     duplicar o que já foi lançado à mão antes. */
+var EXTRA_FAT_DESDE = '2026-11-01';
+var solShowResolvidas = false;
+
+function solVisit(s){
+  if(s.visitId){ var a = state.visits.find(function(v){ return v.id===s.visitId; }); if(a) return a; }
+  return state.visits.find(function(v){ return v.solicitacaoId===s.id; }) || null;
+}
+function extraDueDate(iso){
+  var y = Number(String(iso).slice(0,4)), m = Number(String(iso).slice(5,7)) + 1;
+  if(!y || !m) iso = todayISO(), y = Number(iso.slice(0,4)), m = Number(iso.slice(5,7)) + 1;
+  if(m>12){ m = 1; y++; }
+  return y+'-'+String(m).padStart(2,'0')+'-10';
+}
+function solNewId(){ return 've'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function solClientName(s){ var n = clientName(s.clientId); return n!=='—' ? n : (s.clientName || 'Cliente'); }
+function extraReceivable(v, valor, due, sol){
+  return {
+    clientId: v.clientId,
+    description: 'Visita extra — '+fmtDate(v.date)+(v.pointName ? ' · '+v.pointName : '')+(sol && sol.texto ? ' ('+String(sol.texto).slice(0,60)+')' : ''),
+    amount: valor, dueDate: due, status: 'Pendente', refMonth: String(v.date||'').slice(0,7),
+    origin: 'visita-extra', visitId: v.id, solicitacaoId: (sol && sol.id) || v.solicitacaoId || null,
+    createdAt: new Date().toISOString()
+  };
+}
+
+function renderSolicitacoes(){
+  var ord = function(a,b){ return (b.createdAt||'').localeCompare(a.createdAt||''); };
+  var abertas = state.solicitacoes.filter(function(s){ return s.status!=='resolvida'; }).sort(ord);
+  var resolvidas = state.solicitacoes.filter(function(s){ return s.status==='resolvida'; })
+    .sort(function(a,b){ return (b.resolvidaEm||b.updatedAt||'').localeCompare(a.resolvidaEm||a.updatedAt||''); });
+  var html = '<div class="campo-wrap">';
+  if(!abertas.length) html += '<div class="campo-empty">Nenhum pedido em aberto. Quando um cliente pedir visita extra ou informar uma ocorrência pela Área do cliente, aparece aqui.</div>';
+  abertas.forEach(function(s){
+    var ss = solStatus(s.status), v = solVisit(s);
+    var quando = s.createdAt ? new Date(s.createdAt).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+    html += '<div class="campo-card'+(s.status==='nova'?' late':'')+'">'
+      + '<div class="campo-top"><div><div class="campo-name">'+esc(solClientName(s))+(s.pointName?' — '+esc(s.pointName):'')+'</div>'
+      + '<div class="campo-meta">'+esc(s.texto||'')+'</div></div></div>'
+      + '<div class="campo-tags"><span class="pill '+(s.tipo==='ocorrencia'?'danger':'info')+'">'+(s.tipo==='ocorrencia'?'Ocorrência':'Visita extra')+'</span>'
+      + (s.dataPreferida ? '<span class="pill neutral">Prefere '+fmtDate(s.dataPreferida)+'</span>' : '')
+      + '<span class="pill neutral">'+esc(quando)+'</span>'+(s.criadoPor?'<span class="pill neutral">'+esc(s.criadoPor)+'</span>':'')
+      + (v ? '<span class="pill ok">Visita '+(v.status==='Concluída'?'feita':'agendada')+' '+fmtDate(v.date)+'</span>' : '')+'</div>'
+      + '<div class="campo-acts sol-acts"><select class="sol-st" data-id="'+s.id+'" aria-label="Situação do pedido">'+SOL_STATUS.map(function(o){ return '<option value="'+o[0]+'" '+(o[0]===ss[0]?'selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select>'
+      + '<button type="button" class="btn primary sol-visit" data-id="'+s.id+'">'+(v ? 'Abrir visita' : 'Registrar visita')+'</button>'
+      + '<button type="button" class="btn danger sol-del" data-id="'+s.id+'">Excluir</button></div></div>';
+  });
+  if(resolvidas.length){
+    html += '<button type="button" class="btn sol-toggle" id="sol-toggle">'+(solShowResolvidas ? 'Ocultar resolvidas' : 'Ver resolvidas ('+resolvidas.length+')')+'</button>';
+    if(solShowResolvidas){
+      html += '<div class="sol-res">' + resolvidas.map(function(s){
+        var v = solVisit(s), val = v && v.talao && v.talao.valorExtra;
+        return '<div class="sol-res-row"><div style="flex:1;min-width:0;"><strong>'+esc(solClientName(s))+'</strong>'+(s.pointName?' — '+esc(s.pointName):'')
+          + '<div class="hint">'+esc((s.texto||'').slice(0,90))+'</div>'
+          + '<div class="hint">'+(v ? 'Visita '+fmtDate(v.date)+(val ? ' · '+fmtMoney(val) : ' · sem cobrança') : 'Sem visita ligada')+(s.resolvidaEm ? ' · resolvida em '+fmtDate(s.resolvidaEm.slice(0,10)) : '')+'</div></div>'
+          + (v ? '<button type="button" class="btn small sol-open" data-v="'+v.id+'">Ver visita</button>' : '')
+          + '<button type="button" class="btn small danger sol-del" data-id="'+s.id+'">Excluir</button></div>';
+      }).join('') + '</div>';
+    }
+  }
+  html += '</div>';
+  $('#view').innerHTML = html;
+  $all('.sol-st').forEach(function(sel){
+    var antes = sel.value;
+    sel.onchange = function(){
+      var s = state.solicitacoes.find(function(x){ return x.id===sel.dataset.id; }); if(!s) return;
+      if(sel.value==='resolvida'){ sel.value = antes; solResolver(s); return; }
+      antes = sel.value;
+      updateDoc('solicitacoes', s.id, { status: sel.value, updatedAt: new Date().toISOString() });
+    };
+  });
+  $all('.sol-visit').forEach(function(b){ b.onclick = function(){
+    var s = state.solicitacoes.find(function(x){ return x.id===b.dataset.id; }); if(!s) return;
+    solAbrirTalao(s);
+  }; });
+  $all('.sol-open').forEach(function(b){ b.onclick = function(){ openVisitReport(b.dataset.v); }; });
+  $all('.sol-del').forEach(function(b){ b.onclick = function(){
+    var s = state.solicitacoes.find(function(x){ return x.id===b.dataset.id; }); if(!s) return;
+    customConfirm('Excluir esta solicitação de '+solClientName(s)+'?\n\nEla some também da Área do cliente. A visita e a cobrança ligadas a ela (se houver) continuam.', function(){ deleteDoc('solicitacoes', s.id); });
+    if($('#modal-confirm-body')) $('#modal-confirm-body').style.whiteSpace = 'pre-line';
+  }; });
+  var tg = $('#sol-toggle'); if(tg) tg.onclick = function(){ solShowResolvidas = !solShowResolvidas; renderSolicitacoes(); };
+  fbSolBadge();
+}
+
+function solAbrirTalao(s){
+  var v = solVisit(s);
+  if(v){ openTalao(v.id); return; }
+  if(s.status==='nova') updateDoc('solicitacoes', s.id, { status: 'andamento', updatedAt: new Date().toISOString() });
+  openTalao(null, s.clientId, { sol: s.id, point: s.pointId || null,
+    talao: { visitType: 'extra', valorExtra: null, parecer: '' , outrosServicos: 'Atendimento à solicitação do cliente: '+(s.texto||'') } });
+}
+
+function solResolver(s){
+  var v = solVisit(s);
+  if(v && v.status==='Concluída'){
+    updateDoc('solicitacoes', s.id, { status: 'resolvida', visitId: v.id, resolvidaEm: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    if(PM_FB.toast) PM_FB.toast('Solicitação resolvida — a visita de '+fmtDate(v.date)+' já está em Manutenções.');
+    return;
+  }
+  var d0 = (v && v.date) || s.dataPreferida || todayISO();
+  var val0 = v && v.talao && v.talao.valorExtra != null ? String(v.talao.valorExtra).replace('.',',') : '';
+  $('#modal-title').textContent = 'Resolver solicitação';
+  $('#modal-body').innerHTML =
+      '<p class="hint" style="margin:0 0 12px;line-height:1.5;"><strong>'+esc(solClientName(s))+'</strong>'+(s.pointName?' — '+esc(s.pointName):'')+'<br>'+esc(s.texto||'')+'</p>'
+    + '<div class="hint" style="margin-bottom:14px;line-height:1.5;">Ao resolver, o pedido sai da lista e vira uma <strong>visita realizada</strong> (aba Manutenções). Com valor, entra em <strong>Contas a receber</strong> no Financeiro.'
+      + (v ? '<br>Já existe uma visita agendada para '+fmtDate(v.date)+'; ela será marcada como concluída.' : '')+'</div>'
+    + '<div class="grid2"><div class="field"><label>Data da visita</label><input type="date" id="sr-date" value="'+esc(d0)+'"></div>'
+    + '<div class="field"><label>Técnico</label><select id="sr-tec">'+TECNICOS.map(function(t){ return '<option value="'+t.id+'" '+(((v&&v.tecnicoId)||TECNICO_PADRAO)===t.id?'selected':'')+'>'+esc(t.curto)+'</option>'; }).join('')+'</select></div></div>'
+    + '<div class="grid2"><div class="field"><label>Valor a cobrar (R$)</label><input type="text" inputmode="decimal" id="sr-valor" value="'+esc(val0)+'" placeholder="Em branco = sem cobrança"></div>'
+    + '<div class="field"><label>Vencimento da cobrança</label><input type="date" id="sr-venc" value="'+extraDueDate(d0)+'"></div></div>'
+    + '<div class="field"><label>O que foi feito</label><textarea id="sr-feito" rows="3" placeholder="Ex.: reposição de cloro no reservatório e ajuste da bomba dosadora">'+esc((v && v.talao && v.talao.parecer) || '')+'</textarea></div>';
+  $('#modal-foot').innerHTML = '<button class="btn" id="sr-cancel">Cancelar</button><button class="btn" id="sr-full">Preencher relatório completo</button><button class="btn primary" id="sr-ok">Resolver</button>';
+  var vencAuto = true;
+  $('#sr-venc').addEventListener('input', function(){ vencAuto = false; });
+  $('#sr-date').addEventListener('change', function(){ if(vencAuto && this.value) $('#sr-venc').value = extraDueDate(this.value); });
+  $('#sr-cancel').onclick = closeModal;
+  $('#sr-full').onclick = function(){ closeModal(); solAbrirTalao(s); };
+  $('#sr-ok').onclick = function(){
+    var date = $('#sr-date').value, valTxt = $('#sr-valor').value.trim(), valor = valTxt ? parseMoneyBR(valTxt) : null;
+    var due = $('#sr-venc').value || extraDueDate(date), feito = $('#sr-feito').value.trim();
+    if(!date){ customAlert('Informe a data da visita.'); return; }
+    if(valTxt && valor==null){ customAlert('Valor inválido. Use, por exemplo, 150,00.'); return; }
+    var now = new Date().toISOString(), visitId = v ? v.id : solNewId();
+    var talao = Object.assign({}, (v && v.talao) || {}, { visitType: 'extra', valorExtra: valor, parecer: feito || ((v && v.talao && v.talao.parecer) || '') });
+    if(!talao.outrosServicos) talao.outrosServicos = 'Atendimento à solicitação do cliente: '+(s.texto||'');
+    var data = { clientId: s.clientId, date: date, status: 'Concluída', concludedAt: now, tecnicoId: $('#sr-tec').value,
+      pointId: (v && v.pointId) || s.pointId || null, pointName: (v && v.pointName) || s.pointName || null,
+      talao: talao, generalNotes: talao.parecer, solicitacaoId: s.id };
+    var recId = null;
+    if(valor){
+      recId = 'extra-'+visitId; data.extraReceivableId = recId;
+      db.collection('receivables').doc(recId).set(extraReceivable({ id: visitId, clientId: s.clientId, date: date, pointName: data.pointName, solicitacaoId: s.id }, valor, due, s));
+    }
+    if(v) db.collection('maintenanceVisits').doc(v.id).update(data);
+    else { data.createdAt = now; data.systemsChecked = []; data.nextDueDate = null; db.collection('maintenanceVisits').doc(visitId).set(data); }
+    updateDoc('solicitacoes', s.id, { status: 'resolvida', visitId: visitId, resolvidaEm: now, updatedAt: now });
+    closeModal();
+    if(PM_FB.toast) PM_FB.toast('Resolvida ✓ Visita de '+fmtDate(date)+' lançada em Manutenções'+(valor ? ' e '+fmtMoney(valor)+' em Contas a receber.' : ' (sem cobrança).'));
+  };
+  openModal();
+}
+
+/* Sessão do administrador: mantém tudo amarrado mesmo quando a visita é concluída pelo técnico. */
+var fbExtra = { visits:null, recs:null, sols:null, timer:null };
+function fbStartExtrasSync(){
+  function snapToMap(snap){ var m = {}; snap.docs.forEach(function(d){ m[d.id] = Object.assign({ id: d.id }, d.data() || {}); }); return m; }
+  function q(){ clearTimeout(fbExtra.timer); fbExtra.timer = setTimeout(fbRunExtrasSync, 1500); }
+  db.collection('maintenanceVisits').onSnapshot(function(s){ fbExtra.visits = snapToMap(s); q(); }, function(e){ console.log('extras visits', e); });
+  db.collection('receivables').onSnapshot(function(s){ fbExtra.recs = snapToMap(s); q(); }, function(e){ console.log('extras recs', e); });
+  db.collection('solicitacoes').onSnapshot(function(s){ fbExtra.sols = snapToMap(s); q(); }, function(e){ console.log('extras sols', e); });
+}
+function fbRunExtrasSync(){
+  if(!fbExtra.visits || !fbExtra.recs || !fbExtra.sols) return;
+  var now = new Date().toISOString(), n = 0;
+  Object.keys(fbExtra.visits).forEach(function(id){
+    var v = fbExtra.visits[id];
+    if(v.status!=='Concluída') return;
+    var sol = v.solicitacaoId ? fbExtra.sols[v.solicitacaoId] : null;
+    if(sol && sol.status!=='resolvida'){
+      db.collection('solicitacoes').doc(sol.id).update({ status: 'resolvida', visitId: v.id, resolvidaEm: now, updatedAt: now }); n++;
+    }
+    var t = v.talao || {}, valor = Number(t.valorExtra) || 0;
+    if(t.visitType==='extra' && valor > 0 && !v.extraReceivableId && (v.date||'') >= EXTRA_FAT_DESDE){
+      var recId = 'extra-'+v.id;
+      if(!fbExtra.recs[recId]) db.collection('receivables').doc(recId).set(extraReceivable(v, valor, extraDueDate(v.date), sol));
+      db.collection('maintenanceVisits').doc(v.id).update({ extraReceivableId: recId }); n++;
+    }
+  });
+  if(n) console.log('visitas extras: '+n+' ajuste(s)');
 }
 
 /* ===================== BOOT ===================== */
