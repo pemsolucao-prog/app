@@ -846,7 +846,7 @@ button.pt-card{cursor:pointer;}
     <button class="navbtn" data-tab="pacotes"><span class="ico">04</span>Pacotes</button>
     <button class="navbtn" data-tab="valores"><span class="ico">05</span>Valores</button>
     <button class="navbtn" data-tab="materiais"><span class="ico">06</span>Materiais</button>
-    <button class="navbtn" data-tab="propostas"><span class="ico">07</span>Propostas</button>
+    <button class="navbtn" data-tab="propostas"><span class="ico">07</span>Propostas e contratos</button>
     <button class="navbtn" data-tab="numeracao"><span class="ico">№</span>Numeração</button>
     <button class="navbtn" data-tab="equipe"><span class="ico">08</span>Equipe</button>
     <button class="navbtn" data-tab="financeiro"><span class="ico">09</span>Financeiro</button>
@@ -1886,7 +1886,7 @@ var TAB_META = {
   clientes:{title:'Clientes', sub:'Cadastro, sistemas instalados e tipo de contrato'},
   valores:{title:'Valores', sub:'Tabela de preços de referência das visitas de manutenção'},
   panorama:{title:'Panorama financeiro', sub:'Saúde da empresa: faturado, despesas, sobra e caixinhas'},
-  propostas:{title:'Propostas', sub:'Geração de propostas de manutenção e implantação'},
+  propostas:{title:'Propostas e contratos', sub:'Gere contratos de manutenção e propostas de instalação a partir do cadastro do cliente'},
   equipe:{title:'Equipe', sub:'Escala de trabalho do colaborador e insumos de compra recorrente'},
   manutencoes:{title:'Manutenções', sub:'Relatório de cada visita, histórico por cliente e relatório técnico em PDF'},
   instalacoes:{title:'Instalações', sub:'Instalações de sistema programadas para clientes em implantação'},
@@ -3594,7 +3594,117 @@ async function deliverPdfBlob(blob, filename, label){
     customAlert('Não foi possível salvar '+(label||'o PDF')+' automaticamente. Tente novamente.');
   }
 }
+/* ===================== CONTRATO DE MANUTENÇÃO — LAYOUT NOVO =====================
+   Mesmo conteúdo do contrato-base (Word), reorganizado: faixa de título, quadro-resumo
+   (contratante x contratada + condições principais), cláusulas numeradas, assinatura das
+   duas partes e página final de controle de revisões. */
 function buildManutencaoProposalHTML(client, params, materiais){
+  materiais = materiais || [];
+  var NAVY = '#123F73', BLUE = '#1B5FA8', SOFT = '#EEF4FB', LINE = '#C9D7E8';
+  var end = clienteEnderecoLinhas(client);
+  var custoMensal = params.custoMensal!=null ? params.custoMensal : precoPorVisitas(params.visitsPerMonth, pricingLatest());
+  var precoExtra = params.precoExtra!=null ? params.precoExtra : pricingLatest().priceExtra;
+  var pontos = (params.pontos && params.pontos.length) ? params.pontos : null;
+  var nVis = pontos ? pontos.length : (Number(params.visitsPerMonth)||1);
+  var pontosNomes = pontos ? tlJoin(pontos.map(function(x){ return x.nome; })) : '';
+  var analises = contractedAnalysesText(client);
+  var rev = String(params.revisao||0).padStart(2,'0');
+  var td = 'border:1px solid '+LINE+';padding:7px 9px;vertical-align:top;';
+  var lbl = function(t){ return '<div style="font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#5B6B7E;font-weight:700;margin-bottom:3px;">'+t+'</div>'; };
+  var clausula = function(n, titulo, corpo){
+    return '<div style="margin:16px 0 0;"><p style="margin:0 0 6px;font-weight:800;color:'+NAVY+';font-size:13.5px;">CLÁUSULA '+n+' — '+titulo+'</p>'+corpo+'</div>';
+  };
+  var ul = function(items){ return '<ul style="margin:4px 0 0 18px;padding:0;">'+items.map(function(i){ return '<li style="margin:0 0 4px;">'+i+'</li>'; }).join('')+'</ul>'; };
+  var termo = function(rotulo, valor, sub){
+    return '<td style="'+td+'background:#fff;width:33.3%;">'+lbl(rotulo)+'<div style="font-size:15px;font-weight:800;color:'+NAVY+';">'+valor+'</div>'+(sub?'<div style="font-size:11px;color:#5B6B7E;margin-top:2px;">'+sub+'</div>':'')+'</td>';
+  };
+  var materiaisHTML = '';
+  if(materiais.length){
+    var mt = materiais.reduce(function(s,i){ return s+i.lineTotal; }, 0);
+    materiaisHTML = '<p style="margin:10px 0 4px;"><strong>Materiais previstos nesta contratação</strong> (cobrados à parte do valor mensal):</p>'
+      + '<table style="width:100%;border-collapse:collapse;font-size:12px;"><tr><th style="'+td+'text-align:left;background:'+SOFT+';">Material</th><th style="'+td+'text-align:right;background:'+SOFT+';">Qtd.</th><th style="'+td+'text-align:right;background:'+SOFT+';">Valor unit.</th><th style="'+td+'text-align:right;background:'+SOFT+';">Subtotal</th></tr>'
+      + materiais.map(function(i){ return '<tr><td style="'+td+'">'+esc(i.name)+'</td><td style="'+td+'text-align:right;">'+i.qty+(i.unit?' '+esc(i.unit):'')+'</td><td style="'+td+'text-align:right;">'+fmtMoney(i.unitPrice)+'</td><td style="'+td+'text-align:right;">'+fmtMoney(i.lineTotal)+'</td></tr>'; }).join('')
+      + '<tr><td colspan="3" style="'+td+'"><strong>Total de materiais</strong></td><td style="'+td+'text-align:right;"><strong>'+fmtMoney(mt)+'</strong></td></tr></table>';
+  }
+  var html = ''
+    + docWatermarkHTML()
+    + companyHeaderHTML()
+    // faixa de título
+    + '<div style="background:'+SOFT+';border-left:5px solid '+BLUE+';border-radius:6px;padding:12px 16px;margin:4px 0 14px;">'
+      + '<div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:'+BLUE+';font-weight:800;">Contrato de manutenção</div>'
+      + '<div style="font-size:16px;font-weight:800;color:'+NAVY+';margin:3px 0 4px;">Manutenção de Sistema Convencional de Tratamento de Água</div>'
+      + '<div style="font-size:12.5px;color:#334155;">Nº <strong>'+esc(params.contractNumber||'—')+'</strong> &nbsp;·&nbsp; Revisão '+rev+' &nbsp;·&nbsp; '+esc(COMPANY.city)+', '+dataExtensoPT(params.contractDate)+'</div>'
+    + '</div>'
+    // partes
+    + '<table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:10px;"><tr>'
+      + '<td style="'+td+'width:55%;">'+lbl('Contratante')+'<strong>'+esc(client.name||'—')+'</strong><br>CPF/CNPJ '+esc(client.cpfCnpj||'—')+'<br>'+esc(end.linha1)+'<br>'+esc(end.linha2||'—')+(client.contactName?'<br>A/C de '+esc(client.contactName):'')+'</td>'
+      + '<td style="'+td+'">'+lbl('Contratada')+'<strong>P&amp;M Soluções em Água</strong><br>CNPJ '+esc(COMPANY.cnpj)+'<br>Resp. técnico: '+esc(COMPANY.signer)+'<br>'+esc(COMPANY.signerTitle)+' · '+esc(COMPANY.signerCRQ)+'<br>'+esc(COMPANY.phone)+' · '+esc(COMPANY.email)+'</td>'
+    + '</tr></table>'
+    // condições principais
+    + '<table style="width:100%;border-collapse:collapse;margin-bottom:6px;background:'+SOFT+';"><tr>'
+      + termo('Valor mensal', fmtMoney(custoMensal), pontos ? 'soma de '+pontos.length+' pontos, 1 boleto' : 'boleto bancário')
+      + termo('Vencimento', 'Todo dia '+esc(params.dueDay||10), 'de cada mês')
+      + termo('Vigência', esc(params.termMonths||12)+' meses', 'renovação anual')
+    + '</tr><tr>'
+      + termo('Visitas técnicas', nVis+' por mês', pontos ? '1 em cada ponto' : 'manutenção preventiva')
+      + termo('Análises de laboratório', 'Quadrimestrais', pontos ? 'coleta em cada ponto' : 'laboratório credenciado')
+      + termo('Visita extra', fmtMoney(precoExtra), 'por visita solicitada')
+    + '</tr></table>'
+    + (pontos ? '<div style="margin-top:12px;"><p style="margin:0 0 6px;font-weight:800;color:'+NAVY+';font-size:13px;">PONTOS DE ATENDIMENTO</p>'
+        + '<table style="width:100%;border-collapse:collapse;font-size:12px;"><tr><th style="'+td+'text-align:left;background:'+SOFT+';">Ponto</th><th style="'+td+'text-align:left;background:'+SOFT+';">Local / Endereço</th><th style="'+td+'text-align:left;background:'+SOFT+';">Sistema instalado</th><th style="'+td+'text-align:right;background:'+SOFT+';">Valor mensal</th></tr>'
+        + pontos.map(function(x, i){ return '<tr><td style="'+td+'"><strong>Ponto '+(i+1)+'</strong> – '+esc(x.nome)+'</td><td style="'+td+'">'+esc(x.endereco||'')+'</td><td style="'+td+'">'+esc(x.sistema||'')+'</td><td style="'+td+'text-align:right;">'+fmtMoney(x.valor)+'</td></tr>'; }).join('')
+        + '<tr><td colspan="3" style="'+td+'"><strong>Total mensal</strong></td><td style="'+td+'text-align:right;"><strong>'+fmtMoney(custoMensal)+'</strong></td></tr></table></div>' : '')
+    // cláusulas
+    + clausula('1', 'OBJETO',
+        '<p style="margin:0;text-align:justify;">O presente contrato tem por objetivo estabelecer condições técnicas e comerciais para acompanhamento e manutenção de sistema convencional de tratamento de água'+(pontos ? ' nos pontos de atendimento relacionados acima' : '')+', a fim de assegurar a qualidade microbiológica e físico-química da água servida para as dependências do referido imóvel, de acordo com a Portaria GM/MS Nº 888, de 04 de maio de 2021, do Ministério da Saúde.</p>'
+        + '<div style="border-left:3px solid '+LINE+';padding:4px 0 4px 10px;margin-top:8px;font-size:12px;color:#334155;">Art. 13. Compete ao responsável pelo sistema ou solução alternativa coletiva de abastecimento de água para consumo humano: I - Exercer o controle da qualidade da água. <em>(PRT GM/MS Nº 888/2021)</em></div>')
+    + clausula('2', 'SERVIÇOS INCLUÍDOS',
+        '<p style="margin:0;">A contratada, P&amp;M Soluções, representada por '+esc(COMPANY.signer)+', compromete-se a:</p>'
+        + ul([
+            pontos ? 'Realizar uma visita técnica por mês <strong>em cada ponto de atendimento</strong> ('+visitasLabel(nVis)+' por mês no total), verificando as condições do sistema e realizando, se necessário, a compra/análise/troca/reposição da solução de hipoclorito de sódio, retirada de ar da bomba e troca de mangueiras.'
+                   : 'Realizar '+visitasLabel(nVis)+' por mês, verificando as condições do sistema e realizando, se necessário, a compra/análise/troca/reposição da solução de hipoclorito de sódio, retirada de ar da bomba e troca de mangueiras.',
+            'Realizar a manutenção preventiva e limpeza de todo o sistema'+(pontos ? ' de cada ponto' : '')+'.',
+            'Fornecer os kits de reagentes para verificação do teor de cloro no sistema.',
+            'Reparar e trocar válvulas.'
+          ]))
+    + clausula('3', 'PLANO DE AMOSTRAGEM E ANÁLISES',
+        ul([
+          'Apresentar plano de amostragem de acordo com a legislação vigente e cumpri-lo como acordado neste contrato.',
+          'Realizar, quadrimestralmente, a coleta de amostras'+(pontos ? ' <strong>em cada ponto de atendimento ('+esc(pontosNomes)+')</strong>' : '')+' e, por meio de laboratório subcontratado e credenciado, fornecer um conjunto de análises físico-químicas e microbiológicas'+(pontos ? ' para cada ponto' : '')+'.',
+          'Análises executadas na água após o tratamento'+(pontos ? ', em cada ponto' : '')+': <strong>'+esc(analises)+'</strong>.'
+        ]))
+    + clausula('4', 'VISITAS PERIÓDICAS',
+        '<p style="margin:0;text-align:justify;">As visitas ocorrerão mensalmente, de acordo com a necessidade do cliente, desde que alinhadas com a disponibilidade da contratada. Solicitações urgentes poderão ser aceitas, havendo disponibilidade, com atendimento em até 24h da solicitação.</p>'
+        + '<p style="margin:6px 0 0;text-align:justify;">O controle das visitas se dará por documento elaborado pela contratada que comprove o acompanhamento técnico para efeito de quaisquer fiscalizações, em duas vias, assinado pela contratada e por um representante do contratante a cada visita periódica ou extra.</p>')
+    + clausula('5', 'VISITAS EXTRAS',
+        '<p style="margin:0;text-align:justify;">Visitas extras poderão ser solicitadas e atendidas, havendo disponibilidade da contratada, com prazo de até 24h. Será cobrado o valor de <strong>'+fmtMoney(precoExtra)+' ('+moedaPorExtenso(precoExtra)+')</strong> por visita extra solicitada'+(pontos ? ', em qualquer um dos pontos de atendimento' : '')+', acertado junto do vencimento mensal deste contrato. O valor não inclui materiais utilizados.</p>')
+    + clausula('6', 'O QUE NÃO ESTÁ INCLUSO',
+        '<p style="margin:0;text-align:justify;">Pequenos reparos poderão, ou não, de acordo com sua complexidade, estar inclusos, visto que não são o objeto principal deste contrato. Havendo necessidade de emprego de novo material, este não estará, em hipótese alguma, incluso.</p>')
+    + clausula('7', 'VIGÊNCIA, RENOVAÇÃO E CANCELAMENTO',
+        '<p style="margin:0;text-align:justify;">Este contrato terá vigência de '+esc(params.termMonths||12)+' meses, sendo renovado anualmente, e poderá ser cancelado a qualquer momento por qualquer das partes, bastando comunicação prévia. <strong>Não haverá taxas adicionais e/ou multas em caso de cancelamento.</strong> Na renovação poderão ocorrer variação de valores e revisão de serviços.</p>')
+    + clausula('8', 'VALOR E PAGAMENTO',
+        '<p style="margin:0;text-align:justify;">Os serviços deste contrato terão custo mensal'+(pontos ? ' total' : '')+' de <strong>'+fmtMoney(custoMensal)+' ('+moedaPorExtenso(custoMensal)+')</strong>'
+          + (pontos ? ', correspondente à soma dos pontos de atendimento: '+pontos.map(function(x, i){ return 'Ponto '+(i+1)+' – '+esc(x.nome)+': '+fmtMoney(x.valor); }).join('; ')+'. Os pontos são cobrados em um único boleto mensal' : '')
+          + '. O pagamento se dará por boleto bancário com vencimento <strong>todo dia '+esc(params.dueDay||10)+' de cada mês</strong>. Após o vencimento, haverá cobrança de multa e juros previstos em lei, conforme o Código Tributário Nacional e o Código de Defesa do Consumidor.</p>'
+          + (pontos ? '<p style="margin:6px 0 0;">A inclusão, retirada ou alteração de pontos de atendimento, bem como de seus valores, será formalizada por revisão deste contrato.</p>' : '')
+          + materiaisHTML)
+    // aceite e assinaturas
+    + '<div class="doc-sign" style="margin-top:22px;">'
+      + '<p style="margin:0 0 6px;font-weight:800;color:'+NAVY+';font-size:13.5px;">ACEITE</p>'
+      + '<p style="margin:0;text-align:justify;">As partes declaram estar cientes e de acordo com as condições técnicas e comerciais do Contrato Nº '+esc(params.contractNumber||'—')+'.</p>'
+      + '<p style="margin:14px 0 0;">'+esc(COMPANY.city)+', ______ de ____________________ de '+String(params.contractDate||todayISO()).slice(0,4)+'.</p>'
+      + '<table style="width:100%;border-collapse:collapse;margin-top:46px;font-size:12px;"><tr>'
+        + '<td style="width:48%;text-align:center;vertical-align:top;border-top:1px solid #1a1a1a;padding-top:6px;"><strong>CONTRATANTE</strong><br>'+esc(client.name||'')+'<br>CPF/CNPJ '+esc(client.cpfCnpj||'—')+'</td>'
+        + '<td style="width:4%;"></td>'
+        + '<td style="width:48%;text-align:center;vertical-align:top;border-top:1px solid #1a1a1a;padding-top:6px;"><strong>CONTRATADA</strong><br>'+esc(COMPANY.signer)+'<br>'+esc(COMPANY.signerTitle)+' · '+esc(COMPANY.signerCRQ)+'</td>'
+      + '</tr></table>'
+    + '</div>'
+    + contratoRevisaoHTML(client, params)
+    + '<p style="margin-top:26px;text-align:center;font-size:12px;color:#334155;">'+esc(COMPANY.name)+' · '+esc(COMPANY.tagline)+'<br><em>Água é Saúde! Cuide bem da sua!</em></p>'
+    + docFooterHTML();
+  return html;
+}
+function buildManutencaoProposalHTML_v1(client, params, materiais){
   materiais = materiais || [];
   var end = clienteEnderecoLinhas(client);
   var enderecoLinha1 = end.linha1;
@@ -3707,7 +3817,7 @@ function contratoRevisaoHTML(client, params){
       + '<td style="'+b+'text-align:center;">Aprovação<br>___/___/___</td><td style="'+b+'text-align:center;">Página final</td></tr></table>'
     + '<table style="width:100%;border-collapse:collapse;font-size:12px;"><tr><th colspan="5" style="'+b+'background:#9fd3e0;">Histórico de Revisão</th></tr>'
       + '<tr><th style="'+b+'">Revisão</th><th style="'+b+'">Data</th><th style="'+b+'">Mudanças realizadas</th><th style="'+b+'">Motivo da revisão</th><th style="'+b+'">Aprovado por</th></tr>'
-      + [0,1,2,3,4,5].map(function(){ return '<tr>'+'<td style="'+b+'height:34px;"></td>'.repeat(5)+'</tr>'; }).join('')
+      + [0,1,2,3,4,5].map(function(){ return '<tr>'+('<td style="'+b+'height:34px;"></td>').repeat(5)+'</tr>'; }).join('')
     + '</table></div>';
 }
 function buildImplantacaoProposalHTML(client, params, materiais){
@@ -3836,9 +3946,9 @@ function renderPropostas(){
       + '<div class="field"><label>Cliente</label><select id="pp-client"><option value="">Selecione um cliente</option>'
         + clientsSorted.map(function(c){ return '<option value="'+c.id+'">'+esc(c.name)+'</option>'; }).join('')
         + '</select></div>'
-      + '<div class="field"><label>Tipo de proposta</label><select id="pp-type">'
-        + '<option value="manutencao">Manutenção Periódica</option>'
-        + '<option value="implantacao">Implantação do Sistema</option>'
+      + '<div class="field"><label>Documento</label><select id="pp-type">'
+        + '<option value="manutencao">Contrato de manutenção</option>'
+        + '<option value="implantacao">Proposta de instalação</option>'
         + '</select></div>'
     + '</div>'
     + '<div class="grid2">'
@@ -3924,6 +4034,7 @@ function renderPropostas(){
       if(hint) hint.textContent = 'Marque todos os materiais e sua mão de obra usados nesta instalação — o documento mostra apenas o valor total ao cliente, sem detalhar os itens.';
     }
     syncNumber(); renderValores();
+    $('#pp-generate').textContent = isManut ? 'Gerar contrato' : 'Gerar proposta';
   }
   function syncFromClient(){
     var c = state.clients.find(function(x){ return x.id===clientSel.value; });
@@ -7906,9 +8017,9 @@ function renderNumeracao(){
     html += '<div class="panel" style="margin-bottom:20px;border-color:var(--warn,#d97706);"><div style="padding:14px 18px;line-height:1.55;"><strong>Clientes de manutenção sem contrato registrado ('+semContrato.length+')</strong><br>'
       + '<span class="hint">'+semContrato.map(function(c){ return esc(c.name); }).join(' · ')+'</span></div></div>';
   }
-  html += '<div class="panel" style="margin-bottom:20px;"><div class="panel-head"><h2>Contratos de manutenção</h2><span class="hint">Sequência contínua (não zera no ano novo) — gerados na aba Propostas (tipo Manutenção Periódica)</span></div>'
+  html += '<div class="panel" style="margin-bottom:20px;"><div class="panel-head"><h2>Contratos de manutenção</h2><span class="hint">Sequência contínua (não zera no ano novo) — gerados na aba Propostas → Contrato de manutenção</span></div>'
     + numTabela(L.contratos, 'contrato') + '</div>'
-    + '<div class="panel"><div class="panel-head"><h2>Propostas de instalação</h2><span class="hint">Sequência das propostas — geradas na aba Propostas (tipo Implantação)</span></div>'
+    + '<div class="panel"><div class="panel-head"><h2>Propostas de instalação</h2><span class="hint">Sequência das propostas — geradas na aba Propostas → Proposta de instalação</span></div>'
     + numTabela(L.propostas, 'proposta') + '</div>';
   $('#view').innerHTML = html;
   if($('#num-import')) $('#num-import').onclick = numImportarHistorico;
