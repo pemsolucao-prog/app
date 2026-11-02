@@ -563,6 +563,22 @@ button.pt-card{cursor:pointer;}
 .sol-res{margin-top:10px;display:grid;gap:8px;}
 .sol-res-row{display:flex;gap:8px;align-items:center;background:var(--surface,#fff);border:1px solid var(--line,#e2e8f0);border-radius:12px;padding:10px 12px;}
 .pt-count{min-width:28px;height:28px;border-radius:999px;background:var(--brand,#1B5FA8);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;padding:0 8px;}
+/* Assinatura digital no relatório de visita */
+.tl-sig-btn{display:flex;gap:12px;align-items:center;width:100%;text-align:left;border:2px dashed #9fb3c8;background:#F4F8FC;border-radius:14px;padding:16px 18px;font:inherit;color:inherit;cursor:pointer;}
+.tl-sig-done{border:1px solid #C9D7E8;border-radius:14px;padding:12px 14px;background:#fff;}
+.tl-sig-done img{max-width:280px;max-height:100px;display:block;}
+.tl-sig-ov{position:fixed;inset:0;z-index:9999;background:rgba(11,46,79,.55);display:flex;align-items:center;justify-content:center;padding:10px;}
+.tl-sig-card{background:#fff;border-radius:18px;padding:14px;width:100%;max-width:900px;display:flex;flex-direction:column;gap:8px;max-height:100%;}
+.tl-sig-head{display:flex;flex-direction:column;gap:2px;}
+.tl-sig-name{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600;}
+.tl-sig-name input{font-size:16px;padding:10px;border:1px solid #C9D7E8;border-radius:10px;}
+.tl-sig-pad{position:relative;height:min(46vh,320px);border:1px solid #C9D7E8;border-radius:12px;background:#fff;touch-action:none;}
+.tl-sig-pad canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair;}
+.tl-sig-line{position:absolute;left:8%;right:8%;bottom:26%;border-bottom:1.5px solid #9fb3c8;pointer-events:none;}
+.tl-sig-ph{position:absolute;left:0;right:0;bottom:12%;text-align:center;color:#9fb3c8;font-size:14px;pointer-events:none;}
+.tl-sig-acts{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;}
+.tl-sig-acts .btn{min-height:46px;}
+.lab-frasco{display:inline-block;background:#123F73;color:#fff;border-radius:6px;padding:0 7px;font-size:13px;font-weight:800;letter-spacing:.05em;margin-right:4px;}
 
 </style>
 <script src="firebase-app-compat.js"></script>
@@ -862,7 +878,7 @@ button.pt-card{cursor:pointer;}
     <!-- Demais abas (Manutenções, Análises, Orçamentos) temporariamente
          removidas da navegação a pedido do usuário, para isolar o problema de conexão com o banco.
          O código continua abaixo, intacto, para religarmos assim que resolvido. -->
-    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 02/11 15:44</span></div>
+    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 02/11 17:11</span></div>
   </nav>
   <main id="main">
     <div id="topbar">
@@ -1482,7 +1498,7 @@ function precoPorVisitas(n, p){
 }
 
 /* ===================== STATE ===================== */
-var state = { clients:[], visits:[], analyses:[], quotes:[], receivables:[], expenses:[], packages:[], pricing:[], staffSchedule:[], supplies:[], reports:[], installVisits:[], materials:[], counters:[], generatedProposals:[], numeracao:[], apoioFiles:[], financeConfig:[], financeMoves:[], accounts:[] };
+var state = { clients:[], visits:[], analyses:[], quotes:[], receivables:[], expenses:[], packages:[], pricing:[], staffSchedule:[], supplies:[], reports:[], installVisits:[], materials:[], counters:[], generatedProposals:[], numeracao:[], assinaturas:[], apoioFiles:[], financeConfig:[], financeMoves:[], accounts:[] };
 var PRICING_DEFAULTS = { price1:230, discountPct2:5, discountPct3:10, discountPct4:13, price2:437, price3:621, price4:800.40, priceExtra:300 };
 function counterDoc(){ return state.counters.find(function(x){ return x.id==='propostas'; }) || {id:'propostas', nextSeq:35}; }
 function formatProposalNumber(seq){ var yr = String(new Date().getFullYear()).slice(-2); return String(seq).padStart(3,'0')+'/'+yr; }
@@ -4937,12 +4953,59 @@ function backToVisitList(){
   goTab('manutencoes');
 }
 
+function tlFrascoFmt(v){ var d = String(v||'').replace(/\D/g,''); return d ? String(Number(d)).padStart(3,'0') : ''; }
 function tlNum(v){ if(v===undefined || v===null || String(v).trim()==='') return null; var n = Number(String(v).replace(',','.')); return isFinite(n) ? n : null; }
 function tlFmt(n, dec){ if(n===null || n===undefined || !isFinite(n)) return ''; return Number(n).toLocaleString('pt-BR', { minimumFractionDigits: dec||0, maximumFractionDigits: 2 }); }
 function tlLabel(list, key){ var f = list.filter(function(x){ return x[0]===key; })[0]; return f ? f[1] : ''; }
 function tlJoin(arr){ if(arr.length<=1) return arr.join(''); return arr.slice(0,-1).join(', ')+' e '+arr[arr.length-1]; }
 function tlLower(s){ s = String(s||''); return s.charAt(0).toLowerCase()+s.slice(1); }
 
+// Quadro de assinatura com o dedo (tela cheia). opts: { titulo, pedirNome, nome, frase, onOk(imgDataUrl, nome) }
+function abrirPadAssinatura(opts){
+  opts = opts || {};
+  var ov = document.createElement('div'); ov.className = 'tl-sig-ov';
+  ov.innerHTML = '<div class="tl-sig-card">'
+    + '<div class="tl-sig-head"><strong>'+esc(opts.titulo || 'Assinatura')+'</strong><span class="hint">Gire o celular na horizontal para ter mais espaço</span></div>'
+    + (opts.pedirNome ? '<label class="tl-sig-name">Nome de quem está assinando<input type="text" id="sig-nome" value="'+esc(opts.nome||'')+'" placeholder="Nome completo"></label>' : '')
+    + '<div class="tl-sig-pad"><canvas id="sig-cv"></canvas><div class="tl-sig-line"></div><div class="tl-sig-ph" id="sig-ph">Assine aqui com o dedo</div></div>'
+    + (opts.frase ? '<p class="hint" style="margin:6px 2px 0;">'+opts.frase+'</p>' : '')
+    + '<div class="tl-sig-acts"><button type="button" class="btn" id="sig-clear">Limpar</button><button type="button" class="btn" id="sig-cancel">Cancelar</button><button type="button" class="btn primary" id="sig-ok">Confirmar assinatura</button></div></div>';
+  document.body.appendChild(ov); document.body.style.overflow = 'hidden';
+  var cv = ov.querySelector('#sig-cv'), ctx = cv.getContext('2d'), drew = false, last = null, dpr = window.devicePixelRatio || 1;
+  function fit(){
+    var r = cv.getBoundingClientRect(), keep = drew ? cv.toDataURL() : null;
+    cv.width = Math.round(r.width*dpr); cv.height = Math.round(r.height*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#0B2E4F'; ctx.lineWidth = 2.6;
+    if(keep){ var im = new Image(); im.onload = function(){ ctx.drawImage(im, 0, 0, r.width, r.height); }; im.src = keep; }
+  }
+  fit(); window.addEventListener('resize', fit);
+  function pt(e){ var r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+  cv.addEventListener('pointerdown', function(e){ e.preventDefault(); try{ cv.setPointerCapture(e.pointerId); }catch(x){} last = pt(e); drew = true; ov.querySelector('#sig-ph').style.display = 'none';
+    ctx.beginPath(); ctx.arc(last.x, last.y, 1.2, 0, Math.PI*2); ctx.fillStyle = '#0B2E4F'; ctx.fill(); });
+  cv.addEventListener('pointermove', function(e){ if(!last) return; e.preventDefault(); var p = pt(e);
+    ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.quadraticCurveTo(last.x, last.y, (last.x+p.x)/2, (last.y+p.y)/2); ctx.lineTo(p.x, p.y); ctx.stroke(); last = p; });
+  ['pointerup','pointercancel','pointerleave'].forEach(function(ev){ cv.addEventListener(ev, function(){ last = null; }); });
+  function close(){ window.removeEventListener('resize', fit); document.body.style.overflow = ''; ov.remove(); }
+  ov.querySelector('#sig-clear').onclick = function(){ ctx.clearRect(0,0,cv.width,cv.height); drew = false; ov.querySelector('#sig-ph').style.display = ''; };
+  ov.querySelector('#sig-cancel').onclick = close;
+  ov.querySelector('#sig-ok').onclick = function(){
+    var nm = opts.pedirNome ? ov.querySelector('#sig-nome').value.trim() : '';
+    if(!drew){ customAlert('Assine no quadro antes de confirmar.'); return; }
+    if(opts.pedirNome && !nm){ customAlert('Informe o nome de quem está assinando.'); ov.querySelector('#sig-nome').focus(); return; }
+    // recorta o espaço em branco e reduz o tamanho (fica leve para guardar no banco)
+    var w = cv.width, h = cv.height, data = ctx.getImageData(0,0,w,h).data, minX=w, minY=h, maxX=0, maxY=0;
+    for(var y=0;y<h;y+=2){ for(var x=0;x<w;x+=2){ if(data[(y*w+x)*4+3] > 20){ if(x<minX) minX=x; if(x>maxX) maxX=x; if(y<minY) minY=y; if(y>maxY) maxY=y; } } }
+    var pad = 12*dpr; minX = Math.max(0,minX-pad); minY = Math.max(0,minY-pad); maxX = Math.min(w,maxX+pad); maxY = Math.min(h,maxY+pad);
+    var cw = maxX-minX, ch = maxY-minY, sc = Math.min(1, 600/cw, 220/ch);
+    var out = document.createElement('canvas'); out.width = Math.max(1,Math.round(cw*sc)); out.height = Math.max(1,Math.round(ch*sc));
+    out.getContext('2d').drawImage(cv, minX, minY, cw, ch, 0, 0, out.width, out.height);
+    var img = out.toDataURL('image/png');
+    close();
+    if(opts.onOk) opts.onOk(img, nm);
+  };
+}
+// assinatura cadastrada do técnico (aba Campo → "Minha assinatura")
+function assinaturaTecnico(tid){ var a = (state.assinaturas||[]).filter(function(x){ return x.id===tid; })[0]; return a && a.img ? a.img : null; }
 function renderManutencoes(){
   if(!manutDirty && manutView.mode!=='list' && $('#manut-sub')) return; // não apaga o que está sendo digitado
   manutDirty = false;
@@ -5125,6 +5188,8 @@ function renderTalaoEditor(){
     + '</div></div>';
   $('#view').innerHTML = html;
   var t0 = (v && v.talao) ? v.talao : (manutView.presetTalao || null);
+  // assinatura digital de quem acompanhou a visita (desenhada com o dedo)
+  var sigState = { img: (v && v.talao && v.talao.assinaturaCliente) || null, em: (v && v.talao && v.talao.assinaturaEm) || null };
   var curPoint = v ? (v.pointId || '') : (manutView.presetPoint || '');
 
   function fillBody(cId, useSaved){
@@ -5191,7 +5256,9 @@ function renderTalaoEditor(){
           + '<div class="field"><label>Hipoclorito reposto (L)</label><input type="text" inputmode="decimal" id="tl-hipo" value="'+esc(tlFmt(an.hipoclorito))+'"></div></div>'
       + '</div>'
       + '<div class="grid2">'
-        + '<div class="field"><label>Coleta de amostras</label>'+radio('tl-coleta', [['sim','Sim'],['nao','Não']], an.coleta||'')+'</div>'
+        + '<div class="field"><label>Coleta de amostras</label><div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;">'+radio('tl-coleta', [['sim','Sim'],['nao','Não']], an.coleta||'')
+          + '<div id="tl-frasco-wrap" style="display:'+(an.coleta==='sim'?'block':'none')+';"><input type="text" id="tl-frasco" inputmode="numeric" maxlength="4" value="'+esc(an.numeroFrasco||'')+'" placeholder="Nº frasco" style="width:120px;font-size:17px;font-weight:700;text-align:center;letter-spacing:.06em;">'
+          + '<div class="hint" id="tl-frasco-hint" style="margin-top:3px;"></div></div></div></div>'
         + '<div class="field"><label>Local da coleta</label><input type="text" id="tl-coleta-local" value="'+esc(an.localColeta||'')+'" placeholder="Ex.: torneira da cozinha"></div>'
       + '</div>'
       + '<div class="grid2">'
@@ -5211,10 +5278,14 @@ function renderTalaoEditor(){
       + '<div class="field">'+radio('tl-final', TALAO_STATUS, t.statusFinal||'')+'</div>'
       + '<div class="grid2">'
         + '<div class="field"><label>Próxima visita prevista</label><input type="date" id="tl-prox" value="'+esc(t.proximaVisita||'')+'"></div>'
-        + '<div class="field"><label>Responsável pelo cliente (nome de quem assinou)</label><input type="text" id="tl-assin" value="'+esc(t.responsavelCliente||'')+'"></div>'
-      + '</div>';
+        + '<div class="field"><label>Responsável pelo cliente (nome de quem acompanhou)</label><input type="text" id="tl-assin" value="'+esc(t.responsavelCliente||'')+'"></div>'
+      + '</div>'
+      + '<div class="section-title">Assinatura de quem acompanhou a visita</div>'
+      + '<div id="tl-sign-box"></div>';
     $('#tl-body').innerHTML = h;
     if($('#tl-point')) $('#tl-point').onchange = function(){ curPoint = this.value; var keep = !!(v && v.pointId===curPoint); t0 = keep ? (v.talao||null) : null; fillBody($('#tl-client').value, keep); };
+    tlSignBox();
+    tlFrascoWire();
     $all('input[name="tl-tipo"]').forEach(function(r){ r.addEventListener('change', function(){ $('#tl-valor-wrap').style.display = this.value==='extra' ? 'block' : 'none'; }); });
     $('#tl-mat-add').onclick = function(){
       var d = document.createElement('div'); d.className = 'tl-mat';
@@ -5228,7 +5299,42 @@ function renderTalaoEditor(){
     prox.addEventListener('input', function(){ prox.dataset.auto = ''; });
   }
   fillBody(clientId, true);
-  $('#tl-client').addEventListener('change', function(){ t0 = null; curPoint = ''; fillBody(this.value, false); });
+  $('#tl-client').addEventListener('change', function(){ t0 = null; curPoint = ''; sigState = { img: null, em: null }; fillBody(this.value, false); });
+  // Nº do frasco da coleta (o mesmo escrito na etiqueta): sugere o próximo livre do dia e avisa se repetir
+  function tlFrascoWire(){
+    var inp = $('#tl-frasco'), wrap = $('#tl-frasco-wrap'), hint = $('#tl-frasco-hint'); if(!inp) return;
+    function usados(){ var d = $('#tl-date').value || todayISO(); return state.visits.filter(function(x){ return x.date===d && (!v || x.id!==v.id) && x.talao && x.talao.analises && x.talao.analises.coleta==='sim' && x.talao.analises.numeroFrasco; })
+      .map(function(x){ return { n: x.talao.analises.numeroFrasco, quem: visitClientLabel(x) }; }); }
+    function atualiza(){
+      var u = usados(), prox = tlFrascoFmt(String(u.reduce(function(m,x){ return Math.max(m, Number(x.n)||0); }, 0) + 1));
+      inp.placeholder = 'Ex.: '+prox;
+      var val = tlFrascoFmt(inp.value), rep = val ? u.filter(function(x){ return x.n===val; })[0] : null;
+      hint.innerHTML = rep ? '<span style="color:var(--danger,#b91c1c);">Nº '+esc(val)+' já usado hoje em '+esc(rep.quem)+'</span>' : (val ? 'Escreva '+esc(val)+' na etiqueta' : 'Próximo livre hoje: '+esc(prox));
+    }
+    $all('input[name="tl-coleta"]').forEach(function(r){ r.addEventListener('change', function(){ wrap.style.display = this.value==='sim' ? 'block' : 'none'; atualiza(); }); });
+    inp.addEventListener('input', function(){ this.value = this.value.replace(/\D/g,'').slice(0,4); atualiza(); });
+    inp.addEventListener('blur', function(){ if(this.value) this.value = tlFrascoFmt(this.value); atualiza(); });
+    if($('#tl-date')) $('#tl-date').addEventListener('change', atualiza);
+    atualiza();
+  }
+  function tlSignBox(){
+    var box = $('#tl-sign-box'); if(!box) return;
+    if(sigState.img){
+      var quando = sigState.em ? new Date(sigState.em).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+      box.innerHTML = '<div class="tl-sig-done"><img src="'+sigState.img+'" alt="Assinatura"><div class="hint">Assinado'+(quando ? ' em '+esc(quando) : '')+'</div>'
+        + '<div style="display:flex;gap:8px;margin-top:6px;"><button type="button" class="btn small" id="tl-sig-redo">Assinar de novo</button><button type="button" class="btn small danger" id="tl-sig-del">Apagar assinatura</button></div></div>';
+      $('#tl-sig-redo').onclick = tlSignOpen;
+      $('#tl-sig-del').onclick = function(){ customConfirm('Apagar a assinatura desta visita?', function(){ sigState = { img: null, em: null }; tlSignBox(); }); };
+    } else {
+      box.innerHTML = '<button type="button" class="tl-sig-btn" id="tl-sig-open"><span style="font-size:22px;">✍️</span><span><strong>Toque aqui para o responsável assinar</strong><br><span class="hint">Abre uma tela para assinar com o dedo</span></span></button>';
+      $('#tl-sig-open').onclick = tlSignOpen;
+    }
+  }
+  function tlSignOpen(){
+    abrirPadAssinatura({ titulo: 'Assinatura do responsável', pedirNome: true, nome: ($('#tl-assin') && $('#tl-assin').value.trim()) || '',
+      frase: 'Ao assinar, confirmo que acompanhei esta visita técnica da P&amp;M Soluções.',
+      onOk: function(img, nm){ sigState = { img: img, em: new Date().toISOString() }; if($('#tl-assin')) $('#tl-assin').value = nm; tlSignBox(); } });
+  }
 
   $('#tl-date').addEventListener('change', function(){
     var prox = $('#tl-prox');
@@ -5249,12 +5355,14 @@ function renderTalaoEditor(){
         cloro: tlNum($('#tl-cloro').value), ph: tlNum($('#tl-ph').value),
         temperatura: tlNum($('#tl-temp').value), hipoclorito: tlNum($('#tl-hipo').value),
         coleta: radioVal('tl-coleta'), localColeta: $('#tl-coleta-local').value.trim(),
+        numeroFrasco: radioVal('tl-coleta')==='sim' ? tlFrascoFmt($('#tl-frasco').value) : '',
         horaColeta: $('#tl-hora-coleta').value, horaEntregaLab: $('#tl-hora-lab').value,
         ajusteDe: $('#tl-aj-de').value.trim(), ajustePara: $('#tl-aj-para').value.trim()
       },
       materiais: [], servicos: {}, outrosServicos: $('#tl-serv-outros').value.trim(),
       parecer: $('#tl-parecer').value.trim(), statusFinal: radioVal('tl-final'),
-      proximaVisita: $('#tl-prox').value, responsavelCliente: $('#tl-assin').value.trim()
+      proximaVisita: $('#tl-prox').value, responsavelCliente: $('#tl-assin').value.trim(),
+      assinaturaCliente: sigState.img || null, assinaturaEm: sigState.img ? sigState.em : null
     };
     $all('.tl-sys').forEach(function(cb){ if(cb.checked) talao.sistemas[cb.value] = true; });
     TALAO_ITENS.forEach(function(item, i){
@@ -5276,8 +5384,11 @@ function renderTalaoEditor(){
     var d = $('#tl-date').value || todayISO();
     var status = conclude ? 'Concluída' : ((v && v.status==='Concluída') ? 'Concluída' : 'Agendada');
     var ptSel = pointById(state.clients.find(function(x){ return x.id===cId; }), curPoint);
+    var tecSel = radioVal('tl-tec') || TECNICO_PADRAO;
+    var sigTec = assinaturaTecnico(tecSel) || ((v && v.talao && v.talao.assinaturaTecnicoId===tecSel) ? v.talao.assinaturaTecnico : null);
+    talao.assinaturaTecnico = sigTec || null; talao.assinaturaTecnicoId = sigTec ? tecSel : null;
     var data = {
-      clientId: cId, date: d, status: status, talao: talao, tecnicoId: radioVal('tl-tec') || TECNICO_PADRAO,
+      clientId: cId, date: d, status: status, talao: talao, tecnicoId: tecSel,
       pointId: ptSel ? ptSel.id : null, pointName: ptSel ? ptSel.name : null,
       generalNotes: talao.parecer,
       nextDueDate: status==='Concluída' ? (talao.proximaVisita || addDays(d, MANUT_INTERVALO_DIAS)) : null
@@ -5373,7 +5484,7 @@ function buildVisitReportHTML(v){
   if(an.temperatura!=null) anl.push('A temperatura da água no momento da medição era de '+tlFmt(an.temperatura)+' °C.');
   if(an.hipoclorito!=null) anl.push('Foram repostos '+tlFmt(an.hipoclorito)+' L de solução de hipoclorito de sódio no reservatório.');
   if(an.ajusteDe || an.ajustePara) anl.push('A dosagem da bomba foi ajustada'+(an.ajusteDe ? ' de '+esc(an.ajusteDe) : '')+(an.ajustePara ? ' para '+esc(an.ajustePara) : '')+'.');
-  if(an.coleta==='sim') anl.push('Foram coletadas amostras'+(an.localColeta ? ' no ponto “'+esc(an.localColeta)+'”' : '')+(an.horaColeta ? ' às '+esc(an.horaColeta) : '')+' para análise laboratorial'
+  if(an.coleta==='sim') anl.push('Foram coletadas amostras'+(an.numeroFrasco ? ' (frasco nº '+esc(an.numeroFrasco)+')' : '')+(an.localColeta ? ' no ponto “'+esc(an.localColeta)+'”' : '')+(an.horaColeta ? ' às '+esc(an.horaColeta) : '')+' para análise laboratorial'
       + (an.horaEntregaLab ? ', entregues ao laboratório às '+esc(an.horaEntregaLab) : '')+'; os resultados serão apresentados em laudo específico.');
   else if(an.coleta==='nao') anl.push('Não houve coleta de amostras para análise laboratorial nesta visita.');
   html += '<h4>3. Análises e controle operacional</h4>' + P(anl.length ? anl.join(' ') : 'Não foram registradas medições nesta visita.');
@@ -5413,7 +5524,12 @@ function buildVisitReportHTML(v){
     // assinatura e contatos lado a lado, para o relatório caber numa página
     + '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-top:22px;padding-top:0;">'
       + (function(){ var tc = tecnicoById(v.tecnicoId) || tecnicoById(TECNICO_PADRAO);
-          return '<div><p style="margin:0;">____________________________________<br>'+esc(tc.nome)+'<br>'+esc(tc.cargo)+(tc.registro ? '<br>'+esc(tc.registro) : '')+'</p></div>'; })()
+          var sigT = (t.assinaturaTecnico && (!t.assinaturaTecnicoId || t.assinaturaTecnicoId===tc.id)) ? '<img src="'+t.assinaturaTecnico+'" alt="Assinatura do técnico" style="display:block;max-width:190px;max-height:58px;margin:0 0 -4px 10px;">' : '';
+          var tec = '<div>'+sigT+'<p style="margin:0;">____________________________________<br>'+esc(tc.nome)+'<br>'+esc(tc.cargo)+(tc.registro ? '<br>'+esc(tc.registro) : '')+'</p></div>';
+          if(!t.assinaturaCliente) return tec;
+          var quando = t.assinaturaEm ? new Date(t.assinaturaEm).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+          return tec + '<div style="text-align:center;"><img src="'+t.assinaturaCliente+'" alt="Assinatura" style="display:block;max-width:190px;max-height:58px;margin:0 auto -4px;">'
+            + '<p style="margin:0;font-size:12px;line-height:1.35;">____________________________<br>'+esc(t.responsavelCliente||'Responsável pelo cliente')+'<br><span style="font-size:10.5px;color:#48607E;">Responsável pelo cliente · assinado no app'+(quando ? ' em '+esc(quando) : '')+'</span></p></div>'; })()
       + '<div style="display:flex;align-items:center;gap:12px;font-size:11px;color:#48607E;line-height:1.5;">'
         + '<img src="'+COMPANY_LOGO_DATA_URI+'" alt="P&amp;M Soluções em Água" style="height:34px;width:auto;">'
         + '<div style="border-left:1px solid #D7E2EE;padding-left:12px;">'
@@ -6784,6 +6900,7 @@ async function initFirebaseSession(){
     if(fbProfile.tecnicoId && tecnicoById(fbProfile.tecnicoId)) TECNICO_PADRAO = fbProfile.tecnicoId;
     subscribe('clientesCampo', state.clients);
     subscribe('maintenanceVisits', state.visits);
+    fbStartAssinaturas();
     goTab('campo');
     return 'tecnico';
   }
@@ -6792,6 +6909,7 @@ async function initFirebaseSession(){
   fbStartCampoSync();
   fbStartSolicitacoesAdmin();
   fbStartExtrasSync();
+  fbStartAssinaturas();
   subscribe('contratos', state.contratos);
   return 'admin';
 }
@@ -7910,7 +8028,8 @@ var labState = null; // { date, sel:{id:true}, hora, file, blob }
 var LAB_NOME = 'LACA';
 function labColetas(date){
   return state.visits.filter(function(v){ return v.date===date && v.talao && v.talao.analises && v.talao.analises.coleta==='sim'; })
-    .sort(function(a,b){ return ((a.talao.analises.horaColeta||'') ).localeCompare(b.talao.analises.horaColeta||'') || visitClientLabel(a).localeCompare(visitClientLabel(b)); });
+    .sort(function(a,b){ var fa = a.talao.analises.numeroFrasco || '999', fb = b.talao.analises.numeroFrasco || '999';
+      return fa.localeCompare(fb) || ((a.talao.analises.horaColeta||'') ).localeCompare(b.talao.analises.horaColeta||'') || visitClientLabel(a).localeCompare(visitClientLabel(b)); });
 }
 function campoLabBanner(){
   var n = labColetas(localISO()).length;
@@ -7949,9 +8068,10 @@ function renderCampoLab(){
     var c = labClient(v), a = v.talao.analises || {}, an = labAnalises(c), falta = [];
     if(!labAmostraIdent(v)) falta.push('local da coleta');
     if(!a.horaColeta) falta.push('hora da coleta');
+    if(!a.numeroFrasco) falta.push('nº do frasco');
     if(!an.length) falta.push('análises contratadas (fale com o Marlon)');
     html += '<label class="campo-card lab-item"><div class="lab-check"><input type="checkbox" class="lab-sel" value="'+v.id+'" '+(labState.sel[v.id]?'checked':'')+'></div><div style="flex:1;min-width:0;">'
-      + '<div class="campo-name">'+esc(visitClientLabel(v))+'</div>'
+      + '<div class="campo-name">'+(a.numeroFrasco ? '<span class="lab-frasco">'+esc(a.numeroFrasco)+'</span> ' : '')+esc(visitClientLabel(v))+'</div>'
       + '<div class="campo-meta">'+esc(labAmostraIdent(v) || 'Local da coleta não informado')+' · coleta '+esc(a.horaColeta || '--:--')+'</div>'
       + '<div class="campo-meta">'+esc(an.map(function(x){ return (x.item != null ? 'Item '+x.item+' — ' : '')+x.pacote; }).join(' + ') || 'Sem análises cadastradas')+'</div>'
       + (falta.length ? '<div class="lab-warn">Falta: '+esc(falta.join(', '))+'. <button type="button" class="pt-link lab-fix" data-id="'+v.id+'">Abrir relatório</button></div>' : '')
@@ -7993,9 +8113,10 @@ function labDocHTML(list){
     var end = [c.addressStreet, c.addressNeighborhood, [c.addressCity, c.addressState].filter(Boolean).join(' - ')].filter(Boolean).join(', ');
     var tipos = an.map(function(x){ return x.tipoAmostra; }).filter(Boolean).filter(function(t, j, arr){ return arr.indexOf(t)===j; }).join(' / ') || 'Água Tratada';
     var campo = [a.cloro!=null ? 'Cloro residual livre '+tlFmt(a.cloro,2)+' mg/L' : '', a.ph!=null ? 'pH '+tlFmt(a.ph,1) : '', a.temperatura!=null ? 'Temperatura '+tlFmt(a.temperatura,1)+' °C' : ''].filter(Boolean).join(' · ');
-    h += '<div class="lab-am"><div class="lab-am-n">Amostra '+(i+1)+'</div><table>'
+    h += '<div class="lab-am"><div class="lab-am-n">Amostra '+(i+1)+(a.numeroFrasco ? ' · Frasco nº '+esc(a.numeroFrasco) : '')+'</div><table>'
       + '<tr><th>Cliente</th><td colspan="3"><b>'+esc(c.name || visitClientLabel(v))+'</b>'+(c.cpfCnpj ? ' · CPF/CNPJ '+esc(c.cpfCnpj) : '')+'</td></tr>'
       + '<tr><th>Endereço</th><td colspan="3">'+esc(end || '—')+'</td></tr>'
+      + '<tr><th>Nº do frasco</th><td colspan="3"><b style="font-size:15px;">'+esc(a.numeroFrasco || '—')+'</b></td></tr>'
       + '<tr><th>Identificação da amostra</th><td colspan="3"><b>'+esc(labAmostraIdent(v) || '—')+'</b>'+(v.pointName && a.localColeta ? ' ('+esc(v.pointName)+')' : '')+'</td></tr>'
       + '<tr class="lab-item-row"><th>Item da proposta '+LAB_NOME+'</th><td colspan="3">'+(an.length ? an.map(function(x){ return '<b>'+(x.item != null ? 'Item '+x.item : 'Item —')+'</b> — '+esc(x.pacote); }).join('<br>') : 'Confirmar com a P&amp;M')+'</td></tr>'
       + '<tr><th>Tipo de amostra</th><td>'+esc(tipos)+'</td><th>Coleta</th><td>'+fmtDate(v.date)+' às '+esc(a.horaColeta || '--:--')+'</td></tr>'
@@ -8803,6 +8924,53 @@ renderPortal = function(force){
       openModal();
     };
   }
+};
+
+/* ===================== ASSINATURA FIXA DOS TÉCNICOS =====================
+   Cada técnico cadastra a própria assinatura uma vez (aba Campo → "Minha assinatura").
+   Ao salvar o relatório de uma visita, a assinatura do técnico escolhido vai junto no relatório
+   (o cliente vê no relatório sem precisar acessar a coleção de assinaturas). */
+state.assinaturas = state.assinaturas || [];
+var assinSub = false;
+function fbStartAssinaturas(){
+  if(assinSub || !db) return; assinSub = true;
+  db.collection('assinaturas').onSnapshot(function(snap){
+    state.assinaturas.length = 0;
+    snap.docs.forEach(function(d){ var o = Object.assign({}, d.data()||{}); o.id = d.id; state.assinaturas.push(o); });
+    if(currentTab==='campo' && $('#campo-assin')) { var b = $('#campo-assin'); b.outerHTML = campoAssinHTML(); campoAssinWire(); }
+  }, function(e){ console.log('assinaturas', e); });
+}
+function campoAssinHTML(){
+  var me = TECNICO_PADRAO, tc = tecnicoById(me) || {}, img = assinaturaTecnico(me);
+  return '<div class="campo-lab" id="campo-assin" style="align-items:center;">'
+    + (img ? '<div style="display:flex;align-items:center;gap:12px;min-width:0;"><img src="'+img+'" alt="" style="height:38px;max-width:140px;background:#fff;border-radius:6px;padding:2px 6px;">'
+        + '<div><div class="campo-lab-t">Minha assinatura</div><div class="campo-lab-s">Entra sozinha nos relatórios de '+esc(tc.curto||'')+'</div></div></div>'
+        + '<button type="button" class="btn" id="campo-assin-go">Trocar</button>'
+      : '<div><div class="campo-lab-t">Cadastre sua assinatura</div><div class="campo-lab-s">Faça uma vez só: ela entra sozinha em todos os seus relatórios</div></div>'
+        + '<button type="button" class="btn primary" id="campo-assin-go">Cadastrar</button>')
+    + '</div>';
+}
+function campoAssinWire(){
+  var b = $('#campo-assin-go'); if(!b) return;
+  b.onclick = function(){
+    var me = TECNICO_PADRAO, tc = tecnicoById(me) || {};
+    abrirPadAssinatura({ titulo: 'Minha assinatura — '+(tc.nome||''), frase: 'Esta assinatura será usada nos relatórios de visita feitos por '+esc(tc.nome||'você')+'.',
+      onOk: function(img){
+        db.collection('assinaturas').doc(me).set({ img: img, nome: tc.nome || '', atualizadoEm: new Date().toISOString() });
+        var a = state.assinaturas.filter(function(x){ return x.id===me; })[0];
+        if(a) a.img = img; else state.assinaturas.push({ id: me, img: img });
+        var box = $('#campo-assin'); if(box){ box.outerHTML = campoAssinHTML(); campoAssinWire(); }
+        PM_FB.toast('Assinatura cadastrada ✓', '', 3000);
+      } });
+  };
+}
+var _renderCampoOrig = renderCampo;
+renderCampo = function(){
+  _renderCampoOrig();
+  if(campoMode==='lab' || (fbRole!=='tecnico' && fbRole!=='admin')) return;
+  fbStartAssinaturas();
+  var lab = $('#view .campo-lab');
+  if(lab && !$('#campo-assin')){ lab.insertAdjacentHTML('afterend', campoAssinHTML()); campoAssinWire(); }
 };
 
 /* ===================== BOOT ===================== */
