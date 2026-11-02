@@ -847,6 +847,7 @@ button.pt-card{cursor:pointer;}
     <button class="navbtn" data-tab="valores"><span class="ico">05</span>Valores</button>
     <button class="navbtn" data-tab="materiais"><span class="ico">06</span>Materiais</button>
     <button class="navbtn" data-tab="propostas"><span class="ico">07</span>Propostas</button>
+    <button class="navbtn" data-tab="numeracao"><span class="ico">№</span>Numeração</button>
     <button class="navbtn" data-tab="equipe"><span class="ico">08</span>Equipe</button>
     <button class="navbtn" data-tab="financeiro"><span class="ico">09</span>Financeiro</button>
     <button class="navbtn" data-tab="panorama"><span class="ico">10</span>Panorama</button>
@@ -1478,7 +1479,7 @@ function precoPorVisitas(n, p){
 }
 
 /* ===================== STATE ===================== */
-var state = { clients:[], visits:[], analyses:[], quotes:[], receivables:[], expenses:[], packages:[], pricing:[], staffSchedule:[], supplies:[], reports:[], installVisits:[], materials:[], counters:[], generatedProposals:[], apoioFiles:[], financeConfig:[], financeMoves:[], accounts:[] };
+var state = { clients:[], visits:[], analyses:[], quotes:[], receivables:[], expenses:[], packages:[], pricing:[], staffSchedule:[], supplies:[], reports:[], installVisits:[], materials:[], counters:[], generatedProposals:[], numeracao:[], apoioFiles:[], financeConfig:[], financeMoves:[], accounts:[] };
 var PRICING_DEFAULTS = { price1:230, discountPct2:5, discountPct3:10, discountPct4:13, price2:437, price3:621, price4:800.40, priceExtra:300 };
 function counterDoc(){ return state.counters.find(function(x){ return x.id==='propostas'; }) || {id:'propostas', nextSeq:35}; }
 function formatProposalNumber(seq){ var yr = String(new Date().getFullYear()).slice(-2); return String(seq).padStart(3,'0')+'/'+yr; }
@@ -1488,6 +1489,24 @@ async function consumeProposalNumber(){
   var seq = cd.nextSeq||35;
   await updateDoc('counters', cd.id||'propostas', { nextSeq: seq+1 });
   return formatProposalNumber(seq);
+}
+/* ---- Numeração de contratos de manutenção: sequência própria e CONTÍNUA (não zera na virada do ano).
+   O número é a sequência + o ano do contrato: CM 008/26, CM 009/27... Contratos marcados como
+   "fora da sequência" (ex.: Sader 030/24 e Hotel 031/25, que usaram o número da proposta) não contam. ---- */
+var NUM_FORA_SEQ = ['030/24','031/25','001/24'];
+var onNumeracaoUpdated = null;
+function numPad3(n){ return String(n).padStart(3,'0'); }
+function numForaSeq(n){ return !!n.foraSequencia || (n.origem==='historico' && NUM_FORA_SEQ.indexOf(String(n.numero).replace(/^CM\s*/i,''))>-1); }
+function numContratoProximo(dateISO){
+  var yy = String(dateISO || todayISO()).slice(2,4), max = 0;
+  state.numeracao.forEach(function(n){ if(n.tipo==='contrato' && !numForaSeq(n) && Number(n.seq)>max) max = Number(n.seq); });
+  return { prefixo:'CM', seq: max+1, ano: yy, numero: 'CM '+numPad3(max+1)+'/'+yy };
+}
+function numDocId(tipo, numero){ return tipo+'-'+String(numero).replace(/[^0-9A-Za-z]+/g,'-').replace(/^-|-$/g,''); }
+function numRegistrar(o){
+  if(!db) return;
+  var data = Object.assign({ revisao: 0, origem: 'app', criadoEm: new Date().toISOString() }, o);
+  db.collection('numeracao').doc(numDocId(o.tipo, o.numero)).set(data);
 }
 async function saveGeneratedProposal(c, type, number, dateISO, htmlContent, extra){
   extra = extra || {};
@@ -1636,6 +1655,7 @@ async function initDb(){
   subscribe('materials', state.materials);
   subscribe('counters', state.counters);
   subscribe('generatedProposals', state.generatedProposals);
+  subscribe('numeracao', state.numeracao);
   subscribe('apoioFiles', state.apoioFiles);
   subscribe('financeConfig', state.financeConfig);
   subscribe('financeMoves', state.financeMoves);
@@ -1705,6 +1725,11 @@ function subscribe(colName, arr){
     // 'counters' e 'generatedProposals' mudam a cada proposta gerada; não disparam o render() geral
     // (que redesenharia a aba inteira e apagaria a proposta recém-gerada em tela) — a própria geração
     // atualiza o número na hora, e o hook abaixo só atualiza a lista de "Propostas geradas".
+    if(colName==='numeracao'){
+      if(currentTab==='numeracao'){ try{ render(); }catch(e){} }
+      else if(typeof onNumeracaoUpdated==='function') onNumeracaoUpdated();
+      return;
+    }
     if(colName==='counters' || colName==='generatedProposals'){
       if(colName==='generatedProposals' && typeof onGeneratedProposalsUpdated==='function') onGeneratedProposalsUpdated();
       return;
@@ -1740,7 +1765,7 @@ var BACKUP_COLLECTIONS = [
   ['clients','Clientes'], ['maintenanceVisits','Visitas de manutenção'], ['installationVisits','Instalações'],
   ['analyses','Análises'], ['quotes','Orçamentos'], ['receivables','Contas a receber'], ['expenses','Despesas'],
   ['packages','Pacotes'], ['pricing','Valores'], ['staffSchedule','Escala da equipe'], ['supplies','Insumos'],
-  ['reports','Relatórios'], ['materials','Materiais'], ['counters','Numeração de propostas'], ['generatedProposals','Propostas geradas'], ['apoioFiles','Arquivos de apoio'], ['apoioFileData','Conteúdo dos arquivos de apoio'], ['financeConfig','Percentuais do panorama'], ['financeMoves','Caixinhas (separações e usos)'], ['accounts','Contas e acessos'], ['reportFiles','Arquivos de relatório'], ['reportFileChunks','Conteúdo dos arquivos de relatório'], ['solicitacoes','Solicitações dos clientes'], ['contratos','Contratos e revisões']
+  ['reports','Relatórios'], ['materials','Materiais'], ['counters','Numeração de propostas'], ['generatedProposals','Propostas geradas'], ['apoioFiles','Arquivos de apoio'], ['apoioFileData','Conteúdo dos arquivos de apoio'], ['financeConfig','Percentuais do panorama'], ['financeMoves','Caixinhas (separações e usos)'], ['numeracao','Numeração de contratos e propostas'], ['accounts','Contas e acessos'], ['reportFiles','Arquivos de relatório'], ['reportFileChunks','Conteúdo dos arquivos de relatório'], ['solicitacoes','Solicitações dos clientes'], ['contratos','Contratos e revisões']
 ];
 function renderBackup(){
   var offline = !!window.__PM_OFFLINE__;
@@ -1873,6 +1898,7 @@ var TAB_META = {
   relatorios:{title:'Relatórios', sub:'Relatórios de análise dos clientes, organizados por coleta'},
   apoio:{title:'Material de Apoio ao Cliente', sub:'Passo a passo de procedimentos para orientar o cliente'},
   acessos:{title:'Contas e acessos', sub:'Logins da P&M, onde cada senha está guardada e o que vence — sem senhas no app'},
+  numeracao:{title:'Numeração', sub:'Números dos contratos de manutenção e das propostas de instalação — sem repetir e sem se perder'},
   backup:{title:'Backup dos dados', sub:'Levar os dados entre o app online e a cópia offline (arquivo)'}
 };
 function goTab(tab){
@@ -1900,6 +1926,7 @@ function render(){
   else if(currentTab==='clientes'){ actions.innerHTML = '<button class="btn primary" id="btn-new-client">+ Novo cliente</button>'; $('#btn-new-client').onclick=function(){openClientModal(null, (clientFilter==='instalacao'||clientFilter==='extra')?clientFilter:'manutencao', clientFilter==='propostas'?'Proposta enviada':null);}; renderClientes(); }
   else if(currentTab==='valores') renderValores();
   else if(currentTab==='propostas') renderPropostas();
+  else if(currentTab==='numeracao' && typeof renderNumeracao==='function') renderNumeracao();
   else if(currentTab==='equipe') renderEquipe();
   else if(currentTab==='manutencoes') renderManutencoes();
   else if(currentTab==='instalacoes'){ actions.innerHTML = '<button class="btn primary" id="btn-new-install">+ Nova instalação</button>'; $('#btn-new-install').onclick=function(){openInstallVisitModal();}; renderInstalacoes(); }
@@ -3575,6 +3602,14 @@ function buildManutencaoProposalHTML(client, params, materiais){
   var custoMensal = params.custoMensal!=null ? params.custoMensal : precoPorVisitas(params.visitsPerMonth, pricingLatest());
   var precoExtra = params.precoExtra!=null ? params.precoExtra : pricingLatest().priceExtra;
   var visitas = visitasLabel(params.visitsPerMonth);
+  var pontos = (params.pontos && params.pontos.length) ? params.pontos : null;
+  var pontosNomes = pontos ? tlJoin(pontos.map(function(x){ return x.nome; })) : '';
+  var tdS = 'border:1px solid #999;padding:4px 6px;';
+  var pontosTabela = pontos ? '<p style="text-align:center;margin-top:10px;"><strong>PONTOS DE ATENDIMENTO CONTRATADOS</strong></p>'
+    + '<table style="width:100%;border-collapse:collapse;margin-bottom:10px;font-size:12px;"><thead><tr>'
+    + '<th style="'+tdS+'text-align:left;">Ponto</th><th style="'+tdS+'text-align:left;">Local / Endereço</th><th style="'+tdS+'text-align:left;">Sistema instalado</th><th style="'+tdS+'text-align:right;">Valor mensal</th></tr></thead><tbody>'
+    + pontos.map(function(x, i){ return '<tr><td style="'+tdS+'">Ponto '+(i+1)+' – '+esc(x.nome)+'</td><td style="'+tdS+'">'+esc(x.endereco||'')+'</td><td style="'+tdS+'">'+esc(x.sistema||'')+'</td><td style="'+tdS+'text-align:right;">'+fmtMoney(x.valor)+'</td></tr>'; }).join('')
+    + '<tr><td colspan="3" style="'+tdS+'"><strong>Total mensal</strong></td><td style="'+tdS+'text-align:right;"><strong>'+fmtMoney(custoMensal)+'</strong></td></tr></tbody></table>' : '';
   var materiaisSectionHtml = '';
   if(materiais.length){
     var materiaisTotal = materiais.reduce(function(s,i){ return s+i.lineTotal; }, 0);
@@ -3611,31 +3646,43 @@ function buildManutencaoProposalHTML(client, params, materiais){
     + '<p>Art. 13. Compete ao responsável pelo sistema ou solução alternativa coletiva de abastecimento de água para consumo humano: (Origem: PRT GM/MS Nº 888/2021, Art. 13)</p>'
     + '<p>I - Exercer o controle da qualidade da água; (Origem: PRT GM/MS Nº 888/2021, Art. 13, I)</p>'
     + '<h4>Descrição dos Serviços e Custos</h4>'
+    + '<h4>1) Descrição dos Serviços</h4>'
     + '<p>A contratada, P&amp;M Soluções, representada por '+esc(COMPANY.signer)+', compromete-se a:</p>'
     + '<ul>'
-      + '<li>Realizar '+visitas+' por mês, de modo a verificar as condições do sistema, realizar se necessário for a compra/análises/troca/reposição da solução de hipoclorito de sódio, retirada de ar da bomba, trocas de mangueiras.</li>'
-      + '<li>Realizar a manutenção preventiva e limpeza de todo o sistema.</li>'
+      + (pontos
+        ? '<li>Realizar uma visita técnica por mês <strong>em cada um dos pontos de atendimento</strong> relacionados abaixo ('+visitas+' por mês no total), de modo a verificar as condições do sistema, realizar se necessário for a compra/análises/troca/reposição da solução de hipoclorito de sódio, retirada de ar da bomba, trocas de mangueiras.</li></ul>'
+          + pontosTabela + '<ul><li>Realizar a manutenção preventiva e limpeza de todo o sistema de cada ponto de atendimento.</li>'
+        : '<li>Realizar '+visitas+' por mês, de modo a verificar as condições do sistema, realizar se necessário for a compra/análises/troca/reposição da solução de hipoclorito de sódio, retirada de ar da bomba, trocas de mangueiras.</li>'
+          + '<li>Realizar a manutenção preventiva e limpeza de todo o sistema.</li>')
       + '<li>Fornecimento dos Kits de reagentes para verificação do teor de cloro no sistema.</li>'
       + '<li>Reparo e troca de Válvulas.</li>'
     + '</ul>'
     + '<p>Obs.: Pequenos reparos poderão, ou não, de acordo com sua complexidade estarem inclusos, visto que não é o objeto principal desse contrato; nestes casos ressalta-se que caso haja necessidade de emprego de novo material este não estará em hipótese alguma incluso.</p>'
     + '<ul>'
       + '<li>Apresentar plano de amostragem de acordo com legislação vigente e cumpri-la como acordado nesta proposta.</li>'
-      + '<li>Realizar, quadrimestralmente, a coleta de amostras e, através de laboratório subcontratado, o fornecimento de um conjunto de análises físico-químicas e microbiológicas sendo:</li>'
-      + '<li>Análises a serem executadas na água após o tratamento: '+esc(contractedAnalysesText(client))+'.</li>'
+      + (pontos
+        ? '<li>Realizar, quadrimestralmente, a coleta de amostras <strong>em cada um dos pontos de atendimento ('+esc(pontosNomes)+')</strong> e, através de laboratório subcontratado, o fornecimento de um conjunto de análises físico-químicas e microbiológicas para cada ponto, sendo:</li>'
+          + '<li>Análises a serem executadas na água após o tratamento, em cada ponto: '+esc(contractedAnalysesText(client))+'.</li>'
+        : '<li>Realizar, quadrimestralmente, a coleta de amostras e, através de laboratório subcontratado, o fornecimento de um conjunto de análises físico-químicas e microbiológicas sendo:</li>'
+          + '<li>Análises a serem executadas na água após o tratamento: '+esc(contractedAnalysesText(client))+'.</li>')
     + '</ul>'
-    + '<h4>Visitas Periódicas</h4>'
+    + '<h4>2) Visitas Periódicas</h4>'
     + '<p>As visitas ocorrerão mensalmente, de acordo com a necessidade do cliente, desde que alinhada com a disponibilidade do contratado. Solicitações urgentes poderão ser aceitas, caso haja disponibilidade do contratado, com atendimento em até 24h da solicitação.</p>'
-    + '<h4>Visitas Extras</h4>'
-    + '<p>Em casos de necessidade de visitas extras, estas poderão ser solicitadas e atendidas, caso haja disponibilidade do contratado, com prazo de até 24h; ressaltamos que será cobrado um valor de '+fmtMoney(precoExtra)+' ('+moedaPorExtenso(precoExtra)+') por visita extra solicitada. Este valor deverá ser acertado na data pré-definida entre ambas as partes junto do vencimento mensal deste contrato e não inclui materiais utilizados.</p>'
+    + '<h4>3) Visitas Extras</h4>'
+    + '<p>Em casos de necessidade de visitas extras, estas poderão ser solicitadas e atendidas, caso haja disponibilidade do contratado, com prazo de até 24h; ressaltamos que será cobrado um valor de '+fmtMoney(precoExtra)+' ('+moedaPorExtenso(precoExtra)+') por visita extra solicitada'+(pontos ? ', em qualquer um dos pontos de atendimento' : '')+'. Este valor deverá ser acertado na data pré-definida entre ambas as partes junto do vencimento mensal deste contrato e não inclui materiais utilizados.</p>'
     + '<p>O controle das visitas se dará por meio de documento elaborado pela contratada que comprove a veracidade do acompanhamento técnico para efeito de quaisquer fiscalizações; deverá ter duas vias, devendo o contratado e um representante do contratante assiná-lo a cada visita extra ou periódica.</p>'
-    + '<h4>Vigência, Renovação e/ou Cancelamento do Contrato</h4>'
+    + '<h4>4) Vigência, Renovação e/ou Cancelamento do Contrato</h4>'
     + '<p>Este contrato terá vigência de '+esc(params.termMonths||12)+' meses sendo renovado anualmente e sempre que o cliente tiver a necessidade, e também poderá ser cancelado em qualquer momento por ambas as partes, bastando a comunicação prévia. Não haverá taxas adicionais e/ou multas em caso de cancelamento.</p>'
     + '<p>Obs.: Em ocasião de renovação do contrato poderão ocorrer variação de valores e revisões de serviços.</p>'
-    + '<h4>Custos</h4>'
-    + '<p>Os serviços citados neste contrato terão um custo mensal de '+fmtMoney(custoMensal)+' ('+moedaPorExtenso(custoMensal)+').</p>'
+    + '<h4>5) Custos</h4>'
+    + (pontos
+      ? '<p>Os serviços citados neste contrato terão um custo mensal total de <strong>'+fmtMoney(custoMensal)+' ('+moedaPorExtenso(custoMensal)+')</strong>, correspondente à soma dos pontos de atendimento: <strong>'
+          + pontos.map(function(x, i){ return 'Ponto '+(i+1)+' – '+esc(x.nome)+': '+fmtMoney(x.valor)+' ('+moedaPorExtenso(x.valor)+')'; }).join('; ')
+          + '</strong>. A cobrança dos pontos será feita em um único boleto mensal.</p>'
+        + '<p>Obs.: A inclusão, retirada ou alteração de pontos de atendimento, bem como de seus valores, será formalizada por meio de revisão deste contrato.</p>'
+      : '<p>Os serviços citados neste contrato terão um custo mensal de '+fmtMoney(custoMensal)+' ('+moedaPorExtenso(custoMensal)+').</p>')
     + materiaisSectionHtml
-    + '<h4>Pagamento</h4>'
+    + '<h4>6) Pagamento</h4>'
     + '<p>O pagamento se dará em data pré-definida por ambas as partes, através de boleto bancário até a data de vencimento. Após vencimento ocorrerá cobrança de multa e juros previstos em lei, de acordo com Código Tributário Nacional e o Código de Defesa do Consumidor.</p>'
     + '<p class="doc-head">'+esc(COMPANY.name)+'<br>CNPJ '+esc(COMPANY.cnpj)+'<br>'+esc(COMPANY.tagline)+'</p>'
     + '<p>Eu, _________________________________________, portador(a) do CPF/CNPJ _______________________________ estou ciente e de acordo com as condições técnicas e comerciais do referido Contrato '+esc(params.contractNumber||'—')+'.</p>'
@@ -3643,8 +3690,25 @@ function buildManutencaoProposalHTML(client, params, materiais){
     + '<p>Vencimento para todo dia '+esc(params.dueDay||10)+' de cada mês.</p>'
     + '<div class="doc-sign"><p>____________________________________<br>'+esc(COMPANY.signer)+'<br>'+esc(COMPANY.signerTitle)+'<br>'+esc(COMPANY.signerCRQ)+'</p></div>'
     + '<p style="margin-top:24px;text-align:center;">'+esc(COMPANY.name)+'<br>'+esc(COMPANY.tagline)+'<br>Água é Saúde! Cuide bem da sua!<br>Profissionais capacitados tecnicamente para cuidar de sua Água.</p>'
-    + docFooterHTML();
+    + docFooterHTML()
+    + contratoRevisaoHTML(client, params);
   return html;
+}
+// Última página do contrato: quadro de identificação + histórico de revisões (como no modelo em Word)
+function contratoRevisaoHTML(client, params){
+  var b = 'border:1px solid #333;padding:6px 8px;';
+  return '<div class="pdf-break-before" style="padding-top:8px;">'
+    + '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:22px;"><tr>'
+      + '<td rowspan="2" style="'+b+'width:80px;text-align:center;"><img src="'+COMPANY_LOGO_MARK_URI+'" alt="" style="width:56px;"></td>'
+      + '<td style="'+b+'text-align:center;font-weight:700;">CONTRATO DE MANUTENÇÃO</td>'
+      + '<td style="'+b+'text-align:center;font-weight:700;white-space:nowrap;">N° '+esc(params.contractNumber||'—')+'</td>'
+      + '<td style="'+b+'text-align:center;font-weight:700;white-space:nowrap;">REV. '+String(params.revisao||0).padStart(2,'0')+'</td></tr>'
+      + '<tr><td style="'+b+'text-align:center;">'+esc(client.name||'—')+'<br>CPF/CNPJ '+esc(client.cpfCnpj||'—')+'</td>'
+      + '<td style="'+b+'text-align:center;">Aprovação<br>___/___/___</td><td style="'+b+'text-align:center;">Página final</td></tr></table>'
+    + '<table style="width:100%;border-collapse:collapse;font-size:12px;"><tr><th colspan="5" style="'+b+'background:#9fd3e0;">Histórico de Revisão</th></tr>'
+      + '<tr><th style="'+b+'">Revisão</th><th style="'+b+'">Data</th><th style="'+b+'">Mudanças realizadas</th><th style="'+b+'">Motivo da revisão</th><th style="'+b+'">Aprovado por</th></tr>'
+      + [0,1,2,3,4,5].map(function(){ return '<tr>'+'<td style="'+b+'height:34px;"></td>'.repeat(5)+'</tr>'; }).join('')
+    + '</table></div>';
 }
 function buildImplantacaoProposalHTML(client, params, materiais){
   var HANG = 'padding-left:18px;text-indent:-18px;';
@@ -3778,14 +3842,15 @@ function renderPropostas(){
         + '</select></div>'
     + '</div>'
     + '<div class="grid2">'
-      + '<div class="field"><label>N° da proposta</label><input type="text" id="pp-number" value="'+esc(nextNum)+'" readonly style="background:#f0f0f0;color:#555;">'
-        + '<div class="hint" style="margin-top:4px;">Gerado automaticamente pelo painel — uma sequência só, para manutenção e implantação, sem risco de repetir número.</div></div>'
+      + '<div class="field"><label id="pp-number-label">N° da proposta</label><input type="text" id="pp-number" value="'+esc(nextNum)+'" readonly style="background:#f0f0f0;color:#555;">'
+        + '<div class="hint" style="margin-top:4px;" id="pp-number-hint">Gerado automaticamente — veja todos os números na aba Numeração.</div></div>'
       + '<div class="field"><label>Data</label><input type="date" id="pp-date" value="'+todayISO()+'"></div>'
     + '</div>'
     + '<div id="pp-manut-terms-wrap" class="grid2" style="display:none;">'
       + '<div class="field"><label>Dia de vencimento mensal</label><input type="number" id="pp-dueday" min="1" max="28" value="10"></div>'
       + '<div class="field"><label>Vigência (meses)</label><input type="number" id="pp-term" min="1" value="12"></div>'
     + '</div>'
+    + '<div id="pp-valores-wrap" style="display:none;"></div>'
     + '<div id="pp-visits-wrap" class="field" style="display:none;"><label>Quantidade de visitas por mês (usada para puxar o valor da aba Valores)</label><select id="pp-visits">'
       + [1,2,3,4].map(function(n){ return '<option value="'+n+'">'+n+(n===1?' visita':' visitas')+'</option>'; }).join('')
       + '</select></div>'
@@ -3808,6 +3873,44 @@ function renderPropostas(){
   $('#view').innerHTML = html;
 
   var clientSel = $('#pp-client'), typeSel = $('#pp-type'), visitsWrap = $('#pp-visits-wrap'), visitsSel = $('#pp-visits'), numberInp = $('#pp-number'), manutTermsWrap = $('#pp-manut-terms-wrap');
+  function ppClient(){ return state.clients.find(function(x){ return x.id===clientSel.value; }) || null; }
+  function syncNumber(){
+    var isManut = typeSel.value==='manutencao';
+    $('#pp-number-label').textContent = isManut ? 'N° do contrato' : 'N° da proposta';
+    numberInp.value = isManut ? numContratoProximo($('#pp-date').value || todayISO()).numero : nextProposalNumberPreview();
+    $('#pp-number-hint').textContent = isManut ? 'Contratos têm sequência própria e contínua (não zera na virada do ano), separada das propostas. Veja tudo na aba Numeração.'
+      : 'Propostas de instalação seguem a sequência das propostas. Veja tudo na aba Numeração.';
+  }
+  function renderValores(){
+    var wrap = $('#pp-valores-wrap'), c = ppClient(), isManut = typeSel.value==='manutencao';
+    if(!wrap) return;
+    if(!isManut){ wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+    var dt = $('#pp-date').value || todayISO(), mk = dt >= todayISO() ? '9999-12' : dt.slice(0,7);
+    var pts = clientPoints(c), html = '<div class="section-title">Valores do contrato</div>';
+    var fmtIn = function(v){ return v==null ? '' : String(round2(v)).replace('.',','); };
+    if(pts.length){
+      html += '<div class="hint" style="margin-bottom:8px;">Este cliente tem '+pts.length+' pontos de atendimento. O contrato lista cada ponto com o seu valor, prevê 1 visita por mês e coleta em cada ponto, e cobra a soma num único boleto.</div>';
+      pts.forEach(function(pt, i){
+        var v = pointMonthlyValue(c, pt, mk); if(v==null) v = pt.value;
+        html += '<div class="grid2"><div class="field"><label>Ponto '+(i+1)+'</label><input type="text" value="'+esc(pt.name||'')+'" readonly style="background:#f0f0f0;color:#555;"></div>'
+          + '<div class="field"><label>Valor mensal do ponto (R$)</label><input type="text" inputmode="decimal" class="pp-pt-val" data-id="'+esc(pt.id)+'" value="'+fmtIn(v)+'"></div></div>';
+      });
+    } else {
+      var vis = Number(visitsSel.value)||1;
+      var v1 = (c && hasClientValue(c) && Number(c.visitsPerMonth)===vis) ? clientMonthlyValue(c, mk) : precoPorVisitas(vis, pricingLatest());
+      html += '<div class="field" style="max-width:260px;"><label>Valor mensal (R$)</label><input type="text" inputmode="decimal" id="pp-valor" value="'+fmtIn(v1)+'"></div>';
+    }
+    html += '<div class="field" style="max-width:260px;"><label>Valor da visita extra (R$)</label><input type="text" inputmode="decimal" id="pp-extra" value="'+fmtIn(pricingLatest().priceExtra)+'"></div>'
+      + '<div class="hint" id="pp-valor-total" style="font-weight:600;"></div>';
+    wrap.innerHTML = html; wrap.style.display = 'block';
+    visitsWrap.style.display = pts.length ? 'none' : 'block';
+    function tot(){
+      var t = pts.length ? $all('.pp-pt-val').reduce(function(a,i){ return a + (parseMoneyBR(i.value)||0); }, 0) : (parseMoneyBR(($('#pp-valor')||{}).value)||0);
+      $('#pp-valor-total').textContent = 'Total mensal no contrato: '+fmtMoney(t);
+    }
+    $all('#pp-valores-wrap input').forEach(function(i){ i.addEventListener('input', tot); });
+    tot();
+  }
   function syncTypeFields(){
     var isManut = typeSel.value==='manutencao';
     visitsWrap.style.display = isManut ? 'block' : 'none';
@@ -3820,6 +3923,7 @@ function renderPropostas(){
       if(title) title.textContent = 'Materiais previstos (obrigatório)';
       if(hint) hint.textContent = 'Marque todos os materiais e sua mão de obra usados nesta instalação — o documento mostra apenas o valor total ao cliente, sem detalhar os itens.';
     }
+    syncNumber(); renderValores();
   }
   function syncFromClient(){
     var c = state.clients.find(function(x){ return x.id===clientSel.value; });
@@ -3831,7 +3935,10 @@ function renderPropostas(){
   }
   clientSel.addEventListener('change', syncFromClient);
   typeSel.addEventListener('change', syncTypeFields);
+  $('#pp-date').addEventListener('change', function(){ syncNumber(); renderValores(); });
+  visitsSel.addEventListener('change', renderValores);
   syncTypeFields();
+  onNumeracaoUpdated = function(){ if($('#pp-number')) syncNumber(); };
 
   function updateMaterialsTotal(){
     var list = selectedMaterialsList();
@@ -3898,24 +4005,39 @@ function renderPropostas(){
       area.dataset.docClient = c.name||'';
       printOnlyBtn.style.display = 'inline-flex';
       savePdfBtn.style.display = 'inline-flex';
+      area.dataset.docKind = 'proposta';
       await consumeProposalNumber();
+      numRegistrar({ tipo:'proposta', prefixo:'', seq: Number(String(number).split('/')[0])||null, ano: String(number).split('/')[1]||'', numero: number, clientId: c.id, clientName: c.name||'', data: dateVal });
       await saveGeneratedProposal(c, 'implantacao', number, dateVal, docHtmlI, { params: paramsI, materiais: materiais });
       numberInp.value = nextProposalNumberPreview();
       return;
     }
     hint.textContent = '';
+    var numC = numContratoProximo(dateVal); number = numC.numero; numberInp.value = number;
+    var ptsC = clientPoints(c);
     var params = {
       contractNumber: number,
       contractDate: dateVal,
       dueDay: Number($('#pp-dueday').value)||10,
       termMonths: Number($('#pp-term').value)||12,
-      visitsPerMonth: Number(visitsSel.value)||1
+      visitsPerMonth: ptsC.length || Number(visitsSel.value)||1
     };
-    // contratos novos já saem com a tabela mais recente programada (ex.: 2027) e guardam o valor
-    params.custoMensal = (hasClientValue(c) && Number(c.visitsPerMonth)===params.visitsPerMonth)
-      ? clientMonthlyValue(c, '9999-12') // cliente com valor próprio: valor dele já com os reajustes programados
-      : precoPorVisitas(params.visitsPerMonth, pricingLatest());
-    params.precoExtra = pricingLatest().priceExtra;
+    if(ptsC.length){
+      var endC = clienteEnderecoLinhas(c);
+      params.pontos = ptsC.map(function(pt){
+        var inp = $('.pp-pt-val[data-id="'+pt.id+'"]');
+        return { nome: pt.name || 'Ponto', endereco: [pt.addressStreet, pt.addressNeighborhood].filter(Boolean).join(' – ') || endC.linha1,
+          sistema: (pt.systems||[]).map(function(x){ return (SYSTEM_TYPES[x.type]||{}).label || x.type; }).join(', ') || '—',
+          valor: inp ? parseMoneyBR(inp.value) : pt.value };
+      });
+      if(params.pontos.some(function(x){ return x.valor==null; })){ hint.textContent = 'Informe o valor mensal de cada ponto.'; return; }
+      params.custoMensal = round2(params.pontos.reduce(function(t,x){ return t + x.valor; }, 0));
+    } else {
+      params.custoMensal = parseMoneyBR(($('#pp-valor')||{}).value);
+      if(params.custoMensal==null){ hint.textContent = 'Informe o valor mensal do contrato.'; return; }
+    }
+    params.precoExtra = parseMoneyBR(($('#pp-extra')||{}).value);
+    if(params.precoExtra==null) params.precoExtra = pricingLatest().priceExtra;
     var docHtmlM = buildManutencaoProposalHTML(c, params, materiais);
     area.innerHTML = docHtmlM;
     area.style.display = 'block';
@@ -3923,18 +4045,20 @@ function renderPropostas(){
     area.dataset.docClient = c.name||'';
     printOnlyBtn.style.display = 'inline-flex';
     savePdfBtn.style.display = 'inline-flex';
-    await consumeProposalNumber();
+    area.dataset.docKind = 'contrato';
+    numRegistrar({ tipo:'contrato', prefixo:'CM', seq: numC.seq, ano: numC.ano, numero: number, clientId: c.id, clientName: c.name||'', data: dateVal, valorMensal: params.custoMensal });
+    state.numeracao.push({ tipo:'contrato', prefixo:'CM', seq: numC.seq, ano: numC.ano, numero: number }); // evita repetir antes do retorno do banco
     await saveGeneratedProposal(c, 'manutencao', number, dateVal, docHtmlM, { params: params, materiais: materiais });
-    numberInp.value = nextProposalNumberPreview();
+    syncNumber();
   });
   $('#pp-print-only').addEventListener('click', function(){
     var area = $('#proposal-print-area');
-    var filenameBase = 'Proposta_'+(area.dataset.docNumber||'')+'_'+(area.dataset.docClient||'cliente');
+    var filenameBase = (area.dataset.docKind==='contrato'?'Contrato_':'Proposta_')+(area.dataset.docNumber||'')+'_'+(area.dataset.docClient||'cliente');
     printElement(area, filenameBase, $('#pp-pdf-hint'));
   });
   $('#pp-save-pdf').addEventListener('click', function(){
     var area = $('#proposal-print-area');
-    var filenameBase = 'Proposta_'+(area.dataset.docNumber||'')+'_'+(area.dataset.docClient||'cliente');
+    var filenameBase = (area.dataset.docKind==='contrato'?'Contrato_':'Proposta_')+(area.dataset.docNumber||'')+'_'+(area.dataset.docClient||'cliente');
     exportElementAsPDF(area, filenameBase, $('#pp-pdf-hint'));
   });
 
@@ -7693,6 +7817,168 @@ function fbRunExtrasSync(){
     }
   });
   if(n) console.log('visitas extras: '+n+' ajuste(s)');
+}
+
+/* ===================== NUMERAÇÃO: CONTRATOS DE MANUTENÇÃO x PROPOSTAS DE INSTALAÇÃO =====================
+   Coleção "numeracao": { tipo:'contrato'|'proposta', prefixo:'CM'|'', seq, ano:'26', numero, clientId,
+   clientName, data, revisao, origem:'app'|'manual'|'historico', obs }.
+   Contratos novos: CM 001/26, CM 002/26… (por ano). Propostas: sequência das propostas (036/26…). */
+var NUM_HISTORICO = {
+  contratos: [
+    ['002/19', 'Sans Souci', '', 4, ''], ['004/21', 'Parc', '', 3, ''], ['005/21', 'Bom Jardim', '', 3, ''],
+    ['006/21', 'Canton', '', 2, ''], ['007/21', 'Lyra', '', 2, ''],
+    ['001/24', 'Cleber', '2024-01-12', 0, 'Em nome de Wilgor Pinheiro Gonçalves', true],
+    ['030/24', 'Sader', '2024-09-10', 0, 'Usou o número da proposta (mantido assim)', true],
+    ['031/25', 'Ville', '2025-10-20', 0, 'Usou o número da proposta', true],
+    ['CM 001/25', 'Cleber', '2025-07-10', 0, 'Dois pontos: Residência e Confecção']
+  ],
+  propostas: [
+    ['089-1/17', 'Sans Souci', ''], ['089-2/17', 'Sans Souci', ''], ['002/20', 'Parc', ''], ['010/20', 'Lyra', ''],
+    ['003/21', 'Bom Jardim', ''], ['004/21', 'Bom Jardim', ''], ['006/21', 'Canton', ''],
+    ['028/23', 'Canton', 'Instalação de filtros novos'], ['031/24', 'Ville', ''], ['032/24', 'Cleber', '']
+  ]
+};
+function numParse(numero){
+  var t = String(numero||'').trim(), m = t.match(/(\d+)(?:-\d+)?\s*\/\s*(\d{2})\s*$/);
+  return { prefixo: /^CM\b/i.test(t) ? 'CM' : '', seq: m ? Number(m[1]) : null, ano: m ? m[2] : '' };
+}
+function numClientByKw(kw){
+  kw = String(kw||'').toLowerCase();
+  return state.clients.find(function(c){ return (c.name||'').toLowerCase().indexOf(kw) > -1; }) || null;
+}
+function numAnoFull(a){ return a ? (Number(a) > 50 ? '19'+a : '20'+a) : ''; }
+function numSort(a, b){ return numAnoFull(b.ano).localeCompare(numAnoFull(a.ano)) || (Number(b.seq)||0) - (Number(a.seq)||0) || String(b.numero).localeCompare(String(a.numero)); }
+function numListas(){
+  var contratos = state.numeracao.filter(function(n){ return n.tipo==='contrato'; });
+  var propostas = state.numeracao.filter(function(n){ return n.tipo==='proposta'; });
+  // propostas geradas no app antes deste painel existir
+  state.generatedProposals.forEach(function(g){
+    if(g.type!=='implantacao' || !g.number) return;
+    if(propostas.some(function(p){ return p.numero===g.number; })) return;
+    var pr = numParse(g.number);
+    propostas.push({ id: null, tipo:'proposta', numero: g.number, seq: pr.seq, ano: pr.ano, clientId: g.clientId, clientName: g.clientName, data: g.date, origem: 'app' });
+  });
+  return { contratos: contratos.sort(numSort), propostas: propostas.sort(numSort) };
+}
+function numRepetidos(list){
+  var seen = {}, rep = {};
+  list.forEach(function(n){ var k = String(n.numero).replace(/\s+/g,'').toUpperCase(); if(seen[k]) rep[k] = true; seen[k] = true; });
+  return function(n){ return !!rep[String(n.numero).replace(/\s+/g,'').toUpperCase()]; };
+}
+function numOrigemPill(o){
+  return o==='historico' ? '<span class="pill neutral">pasta</span>' : (o==='manual' ? '<span class="pill warn">manual</span>' : '<span class="pill info">app</span>');
+}
+function numTabela(list, tipo){
+  var isRep = numRepetidos(list);
+  if(!list.length) return '<div class="empty">Nenhum número registrado ainda.</div>';
+  return '<div class="tablewrap"><table><thead><tr><th>N°</th><th>Cliente</th><th>Data</th>'+(tipo==='contrato'?'<th>Revisão</th>':'')+'<th>Origem</th><th>Obs.</th><th></th></tr></thead><tbody>'
+    + list.map(function(n){
+      var cli = n.clientId ? clientName(n.clientId) : '—';
+      if(cli==='—') cli = n.clientName || '—';
+      return '<tr><td class="mono" style="white-space:nowrap;"><strong>'+esc(n.numero)+'</strong>'+(isRep(n) ? ' <span class="pill danger">repetido</span>' : '')+(tipo==='contrato' && numForaSeq(n) ? '<div class="hint" style="font-family:inherit;white-space:normal;">fora da sequência</div>' : '')+'</td>'
+        + '<td>'+esc(cli)+'</td><td>'+(n.data ? fmtDate(n.data) : '—')+'</td>'
+        + (tipo==='contrato' ? '<td>REV '+String(n.revisao||0).padStart(2,'0')+'</td>' : '')
+        + '<td>'+numOrigemPill(n.origem)+'</td><td class="hint">'+esc(n.obs||'')+'</td>'
+        + '<td style="white-space:nowrap;">'+(n.id ? '<button class="btn small num-edit" data-id="'+esc(n.id)+'">Editar</button> <button class="btn small danger num-del" data-id="'+esc(n.id)+'">Excluir</button>' : '<span class="hint">gerada no app</span>')+'</td></tr>';
+    }).join('') + '</tbody></table></div>';
+}
+function renderNumeracao(){
+  var L = numListas(), proxC = numContratoProximo(todayISO()), proxP = nextProposalNumberPreview();
+  var temHist = state.numeracao.some(function(n){ return n.origem==='historico'; });
+  var comContrato = {};
+  L.contratos.forEach(function(n){ if(n.clientId) comContrato[n.clientId] = true; });
+  var semContrato = state.clients.filter(function(c){ return clientCategoryOf(c)==='manutencao' && isActiveClient(c) && !comContrato[c.id]; });
+  var actions = $('#page-actions');
+  if(actions){ actions.innerHTML = '<button class="btn primary" id="num-add">+ Registrar número</button>'; $('#num-add').onclick = function(){ numModal(null); }; }
+  var html = '<div class="kpi-row">'
+    + kpi('Próximo contrato de manutenção', proxC.numero, 'ok')
+    + kpi('Próxima proposta de instalação', proxP, 'ok')
+    + kpi('Contratos registrados', String(L.contratos.length), '')
+    + kpi('Propostas registradas', String(L.propostas.length), '')
+    + '</div>';
+  if(!temHist){
+    html += '<div class="panel" style="margin-bottom:20px;"><div style="padding:16px 18px;line-height:1.55;">'
+      + '<strong>Trazer os números que já existem nas pastas</strong><br>'
+      + '<span class="hint">'+NUM_HISTORICO.contratos.length+' contratos e '+NUM_HISTORICO.propostas.length+' propostas de instalação encontrados em "Clientes manutenção ativos" (mapeamento de 02/11/2026). Fica tudo marcado como "pasta".</span>'
+      + '<div style="margin-top:10px;"><button class="btn primary" id="num-import">Importar histórico</button></div></div></div>';
+  }
+  if(semContrato.length){
+    html += '<div class="panel" style="margin-bottom:20px;border-color:var(--warn,#d97706);"><div style="padding:14px 18px;line-height:1.55;"><strong>Clientes de manutenção sem contrato registrado ('+semContrato.length+')</strong><br>'
+      + '<span class="hint">'+semContrato.map(function(c){ return esc(c.name); }).join(' · ')+'</span></div></div>';
+  }
+  html += '<div class="panel" style="margin-bottom:20px;"><div class="panel-head"><h2>Contratos de manutenção</h2><span class="hint">Sequência contínua (não zera no ano novo) — gerados na aba Propostas (tipo Manutenção Periódica)</span></div>'
+    + numTabela(L.contratos, 'contrato') + '</div>'
+    + '<div class="panel"><div class="panel-head"><h2>Propostas de instalação</h2><span class="hint">Sequência das propostas — geradas na aba Propostas (tipo Implantação)</span></div>'
+    + numTabela(L.propostas, 'proposta') + '</div>';
+  $('#view').innerHTML = html;
+  if($('#num-import')) $('#num-import').onclick = numImportarHistorico;
+  $all('.num-edit').forEach(function(b){ b.onclick = function(){ numModal(state.numeracao.find(function(n){ return n.id===b.dataset.id; })); }; });
+  $all('.num-del').forEach(function(b){ b.onclick = function(){
+    var n = state.numeracao.find(function(x){ return x.id===b.dataset.id; }); if(!n) return;
+    customConfirm('Excluir o registro do número '+n.numero+'? O documento em si (PDF/Word) não é afetado.', function(){ deleteDoc('numeracao', n.id); });
+  }; });
+}
+function numImportarHistorico(){
+  var now = new Date().toISOString();
+  NUM_HISTORICO.contratos.forEach(function(h){
+    var c = numClientByKw(h[1]), pr = numParse(h[0]);
+    numRegistrar({ tipo:'contrato', prefixo: pr.prefixo, seq: pr.seq, ano: pr.ano, numero: h[0], clientId: c ? c.id : null, clientName: c ? c.name : h[1],
+      data: h[2] || null, revisao: h[3] || 0, obs: h[4] || '', foraSequencia: !!h[5], origem: 'historico', criadoEm: now });
+  });
+  NUM_HISTORICO.propostas.forEach(function(h){
+    var c = numClientByKw(h[1]), pr = numParse(h[0]);
+    numRegistrar({ tipo:'proposta', prefixo:'', seq: pr.seq, ano: pr.ano, numero: h[0], clientId: c ? c.id : null, clientName: c ? c.name : h[1],
+      data: h[2] && /^\d{4}-/.test(h[2]) ? h[2] : null, obs: /^\d{4}-/.test(h[2]||'') ? '' : (h[2]||''), origem: 'historico', criadoEm: now });
+  });
+  if(window.PM_FB && PM_FB.toast) PM_FB.toast('Histórico importado ✓');
+}
+function numModal(n){
+  var isNew = !n, tipo0 = n ? n.tipo : 'contrato';
+  var clientsSorted = state.clients.slice().sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
+  $('#modal-title').textContent = isNew ? 'Registrar número' : 'Editar '+(n.tipo==='contrato'?'contrato':'proposta')+' '+n.numero;
+  $('#modal-body').innerHTML =
+      '<div class="hint" style="margin-bottom:12px;line-height:1.5;">Use para números criados fora do app (por exemplo, um contrato feito no Word). Os gerados na aba Propostas entram aqui sozinhos.</div>'
+    + '<div class="grid2"><div class="field"><label>Tipo</label><select id="nm-tipo" '+(isNew?'':'disabled')+'><option value="contrato" '+(tipo0==='contrato'?'selected':'')+'>Contrato de manutenção</option><option value="proposta" '+(tipo0==='proposta'?'selected':'')+'>Proposta de instalação</option></select></div>'
+    + '<div class="field"><label>Número</label><input type="text" id="nm-num" value="'+esc(n ? n.numero : '')+'" '+(isNew?'':'readonly style="background:#f0f0f0;"')+'></div></div>'
+    + '<div class="grid2"><div class="field"><label>Cliente</label><select id="nm-cli"><option value="">—</option>'+clientsSorted.map(function(c){ return '<option value="'+c.id+'" '+(n && n.clientId===c.id?'selected':'')+'>'+esc(c.name)+'</option>'; }).join('')+'</select></div>'
+    + '<div class="field"><label>Data</label><input type="date" id="nm-data" value="'+esc((n && n.data) || todayISO())+'"></div></div>'
+    + '<div class="grid2"><div class="field" id="nm-rev-wrap"><label>Revisão</label><input type="number" min="0" id="nm-rev" value="'+((n && n.revisao) || 0)+'">'
+      + '<label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-weight:500;"><input type="checkbox" id="nm-fora" style="width:auto;" '+(n && numForaSeq(n) ? 'checked' : '')+'> Fora da sequência (não conta para o próximo número)</label></div>'
+    + '<div class="field"><label>Observação</label><input type="text" id="nm-obs" value="'+esc((n && n.obs) || '')+'"></div></div>'
+    + '<div class="hint" id="nm-msg" style="color:var(--danger,#b91c1c);"></div>';
+  $('#modal-foot').innerHTML = '<button class="btn" id="nm-cancel">Cancelar</button><button class="btn primary" id="nm-ok">Salvar</button>';
+  function sugerir(){
+    if(!isNew) return;
+    var t = $('#nm-tipo').value;
+    $('#nm-rev-wrap').style.display = t==='contrato' ? '' : 'none';
+    $('#nm-num').placeholder = t==='contrato' ? numContratoProximo($('#nm-data').value).numero : nextProposalNumberPreview();
+    if(!$('#nm-num').dataset.edited) $('#nm-num').value = $('#nm-num').placeholder;
+  }
+  if(isNew){
+    $('#nm-num').addEventListener('input', function(){ this.dataset.edited = '1'; });
+    $('#nm-tipo').addEventListener('change', sugerir); $('#nm-data').addEventListener('change', sugerir); sugerir();
+  } else if(n.tipo!=='contrato') $('#nm-rev-wrap').style.display = 'none';
+  $('#nm-cancel').onclick = closeModal;
+  $('#nm-ok').onclick = function(){
+    var tipo = $('#nm-tipo').value, numero = $('#nm-num').value.trim().replace(/\s+/g,' '), pr = numParse(numero);
+    var cid = $('#nm-cli').value, c = cid ? state.clients.find(function(x){ return x.id===cid; }) : null;
+    if(!pr.seq || !pr.ano){ $('#nm-msg').textContent = 'Número inválido. Use, por exemplo, CM 002/26 ou 036/26.'; return; }
+    if(isNew && state.numeracao.some(function(x){ return x.tipo===tipo && String(x.numero).replace(/\s+/g,'').toUpperCase()===numero.replace(/\s+/g,'').toUpperCase(); })){
+      $('#nm-msg').textContent = 'Esse número já está registrado.'; return;
+    }
+    var data = { clientId: cid || null, clientName: c ? c.name : ((n && n.clientName) || ''), data: $('#nm-data').value || null,
+      revisao: Number($('#nm-rev').value)||0, obs: $('#nm-obs').value.trim(), foraSequencia: tipo==='contrato' && $('#nm-fora').checked };
+    if(isNew){
+      numRegistrar(Object.assign({ tipo: tipo, prefixo: pr.prefixo, seq: pr.seq, ano: pr.ano, numero: numero, origem: 'manual' }, data));
+      // proposta registrada à mão: o contador das propostas pula para depois dela
+      var yy = String(new Date().getFullYear()).slice(-2), cd = counterDoc();
+      if(tipo==='proposta' && pr.ano===yy && pr.seq >= (cd.nextSeq||35)) updateDoc('counters', cd.id||'propostas', { nextSeq: pr.seq + 1 });
+    } else {
+      updateDoc('numeracao', n.id, data);
+    }
+    closeModal();
+  };
+  openModal();
 }
 
 /* ===================== BOOT ===================== */
