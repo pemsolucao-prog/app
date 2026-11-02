@@ -858,7 +858,7 @@ button.pt-card{cursor:pointer;}
     <!-- Demais abas (Manutenções, Análises, Orçamentos) temporariamente
          removidas da navegação a pedido do usuário, para isolar o problema de conexão com o banco.
          O código continua abaixo, intacto, para religarmos assim que resolvido. -->
-    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 01/11 23:06</span></div>
+    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 01/11 23:49</span></div>
   </nav>
   <main id="main">
     <div id="topbar">
@@ -3061,6 +3061,25 @@ function cartaSistemaInfo(c){
   insumos.push('deslocamento');
   return { sistema: sistema, insumos: insumos.slice(0,-1).join(', ')+' e '+insumos[insumos.length-1], historico: historico };
 }
+// Contrato registrado na aba Numeração (número atual, revisão e o que entra na próxima revisão)
+function contratoDoCliente(c){
+  return (state.numeracao||[]).filter(function(n){ return n.tipo==='contrato' && n.clientId===c.id && !n.encerrado; })
+    .sort(function(a,b){ return String(b.data||'').localeCompare(String(a.data||'')); })[0] || null;
+}
+function cartaRevisaoInfo(c, novo){
+  var k = contratoDoCliente(c); if(!k) return null;
+  var antes = mensalidadeCliente(c, prevMonthKey(novo.effectiveFrom)), depois = mensalidadeCliente(c, novo.effectiveFrom);
+  var nVis = clientPoints(c).length || Number(c.visitsPerMonth)||1;
+  var ja = (k.revisoes||[]).filter(function(r){ return r.reajuste===novo.effectiveFrom; })[0]; // revisão já registrada
+  var rev = ja ? Number(ja.rev) : (Number(k.revisao)||0) + 1;
+  var itens = ja ? (ja.itens||[]) : [];
+  if(!ja){
+    (k.regulariza||[]).forEach(function(t){ itens.push(t); });
+    itens.push('Reajuste anual do contrato: valor mensal de '+fmtMoney(antes)+' para '+fmtMoney(depois)+' (+'+fmtMoney(round2((depois-antes)/nVis))+' por visita)');
+    if(k.numeroAnterior && !k.renumeracaoRegistrada) itens.push('Renumeração contratual: o contrato Nº '+k.numeroAnterior+' passa a ser Nº '+k.numero);
+  }
+  return { k: k, numero: k.numero, rev: rev, revTxt: String(rev).padStart(2,'0'), itens: itens, jaRegistrada: !!ja, renumerou: !!(k.numeroAnterior && !k.renumeracaoRegistrada) };
+}
 function buildCartaReajusteHTML(c, novo, dataCarta, first){
   var si = cartaSistemaInfo(c);
   var vpm = Number(c.visitsPerMonth)||1;
@@ -3081,7 +3100,8 @@ function buildCartaReajusteHTML(c, novo, dataCarta, first){
   return header
     + '<p>'+esc(COMPANY.city)+', '+esc(dataExtensoPT(dataCarta))+'.</p>'
     + '<p>'+esc(c.name||'')+(c.contactName && c.contactName!==c.name ? '<br>A/C '+esc(c.contactName) : '')+'<br>'+esc(end.linha1)+(end.linha2 ? '<br>'+esc(end.linha2) : '')+'</p>'
-    + '<p><strong>Ref.: Reajuste dos valores do contrato de manutenção'+(c.proposalNumber ? ' Nº '+esc(c.proposalNumber) : '')+' — vigência a partir de '+esc(mesNovo)+'</strong></p>'
+    + (function(){ var ri = cartaRevisaoInfo(c, novo);
+        return '<p><strong>Ref.: Reajuste dos valores do contrato de manutenção'+(ri ? ' Nº '+esc(ri.numero)+' — Revisão '+ri.revTxt : (c.proposalNumber ? ' Nº '+esc(c.proposalNumber) : ''))+' — vigência a partir de '+esc(mesNovo)+'</strong></p>'; })()
     + '<p>Prezados,</p>'
     + P('Agradecemos a confiança depositada na P&amp;M Soluções em Água no cuidado '+si.sistema+'.')
     + P(semReajuste+' Nesse período, porém, os custos dos insumos utilizados na manutenção — '+si.insumos+' — tiveram aumento expressivo, o que torna necessária, neste momento, a atualização dos valores.')
@@ -3089,6 +3109,15 @@ function buildCartaReajusteHTML(c, novo, dataCarta, first){
         + (pts.length ? ' ('+pts.map(function(pt){ return esc(pt.name)+': '+fmtMoney(pointMonthlyValue(c, pt, novo.effectiveFrom)); }).join('; ')+')' : '')+'.'
         + (tabelaNova && valorNovo < tabelaNova ? ' Mantemos a condição especial do seu contrato: pelo valor de tabela, a mensalidade seria de '+fmtMoney(tabelaNova)+'.' : '')
         + (extraMudou ? ' O valor da visita extra, quando solicitada, passará de '+fmtMoney(antes.priceExtra)+' para '+fmtMoney(novo.priceExtra)+'.' : ''))
+    + (function(){ var ri = cartaRevisaoInfo(c, novo); if(!ri) return '';
+        var b = 'border:1px solid #9fb3c8;padding:6px 8px;vertical-align:top;';
+        return '<p style="margin:10px 0 4px;"><strong>Revisão '+ri.revTxt+' do contrato Nº '+esc(ri.numero)+'</strong></p>'
+          + '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:6px;"><tr>'
+          + '<th style="'+b+'background:#EEF4FB;text-align:center;width:15%;">Revisão</th><th style="'+b+'background:#EEF4FB;text-align:left;">Mudanças realizadas</th></tr>'
+          + '<tr><td style="'+b+'text-align:center;"><strong>Rev '+ri.revTxt+'</strong><br><span style="font-size:11px;">'+esc(MESES_PT[Number(novo.effectiveFrom.slice(5,7))-1].slice(0,3)+'/'+novo.effectiveFrom.slice(0,4))+'</span></td>'
+          + '<td style="'+b+'">'+ri.itens.map(function(t){ return '• '+esc(t); }).join('<br>')+'</td></tr></table>'
+          + (ri.renumerou ? '<p style="font-size:12px;color:#334155;margin-top:0;">A renumeração apenas organiza os contratos da P&amp;M em ordem cronológica; as demais condições do seu contrato permanecem as mesmas.</p>' : '');
+      })()
     + P('Também a partir de '+anoNovo+', o acompanhamento técnico do seu sistema passa a contar com:')
     + '<ul>'
       + '<li>relatório de visita em duas vias, assinado pelo técnico responsável e pelo responsável no local;</li>'
@@ -3099,7 +3128,7 @@ function buildCartaReajusteHTML(c, novo, dataCarta, first){
     + P('Para dar mais previsibilidade, a partir de '+(Number(anoNovo)+1)+' os reajustes passarão a ser anuais, sempre em janeiro, pela variação do IPCA/IBGE acumulada nos 12 meses anteriores.')
     + P('Permanecemos à disposição para esclarecer qualquer dúvida.')
     + '<p>Atenciosamente,</p>'
-    + '<div class="doc-sign" style="margin-top:18px;"><p>____________________________________<br>'+esc(COMPANY.signer)+'<br>'+esc(COMPANY.signerTitle)+' — '+esc(COMPANY.name)+'<br>'+esc(COMPANY.signerCRQ)+'</p></div>'
+    + '<div class="doc-sign" style="margin-top:10px;"><p>____________________________________<br>'+esc(COMPANY.signer)+'<br>'+esc(COMPANY.signerTitle)+' — '+esc(COMPANY.name)+'<br>'+esc(COMPANY.signerCRQ)+'</p></div>'
     + docFooterHTML();
 }
 function renderCartaBox(){
@@ -3118,7 +3147,7 @@ function renderCartaBox(){
     + '<div class="tl-checks" style="margin-bottom:12px;">'+cl.map(function(c){ return '<label><input type="checkbox" class="ct-chk" value="'+c.id+'" checked> '+esc(c.name)+' <span class="hint ct-val" data-id="'+c.id+'"></span></label>'; }).join('')+'</div>'
     + '<button class="btn primary" id="ct-gen">Gerar cartas</button>'
     + '<div id="ct-out" style="display:none;margin-top:18px;">'
-      + '<div style="max-width:800px;margin:0 auto 12px;display:flex;justify-content:flex-end;gap:10px;align-items:center;"><span class="hint" id="ct-hint"></span><button class="btn" id="ct-print">Imprimir</button><button class="btn primary" id="ct-pdf">Salvar PDF</button></div>'
+      + '<div style="max-width:800px;margin:0 auto 12px;display:flex;justify-content:flex-end;gap:10px;align-items:center;"><span class="hint" id="ct-hint"></span><button class="btn" id="ct-reg">Registrar revisões nos contratos</button><button class="btn" id="ct-print">Imprimir</button><button class="btn primary" id="ct-pdf">Salvar PDF</button></div>'
       + '<div class="hint" style="max-width:800px;margin:0 auto 10px;">Uma carta por página. Dá para clicar no texto e ajustar antes de salvar o PDF.</div>'
       + '<div id="reajuste-letters-area" class="doc-page print-doc doc-compact" contenteditable="true"></div>'
     + '</div>';
@@ -3142,6 +3171,22 @@ function renderCartaBox(){
     $('#reajuste-letters-area').innerHTML = html;
     $('#ct-out').style.display = 'block';
     $('#ct-out').scrollIntoView({behavior:'smooth', block:'start'});
+  };
+  $('#ct-reg').onclick = function(){
+    var t = sch.filter(function(x){ return x.effectiveFrom === $('#ct-rj').value; })[0];
+    var ids = $all('.ct-chk').filter(function(c){ return c.checked; }).map(function(c){ return c.value; });
+    var lista = ids.map(function(id){ var c = state.clients.find(function(x){ return x.id===id; }); return c ? { c: c, ri: cartaRevisaoInfo(c, t) } : null; }).filter(function(x){ return x && x.ri && !x.ri.jaRegistrada; });
+    if(!lista.length){ customAlert('Nada para registrar: as revisões destes clientes já estão registradas (ou eles não têm contrato na aba Numeração).'); return; }
+    customConfirm('Registrar a nova revisão no contrato de '+lista.length+' cliente(s)?\n\n'+lista.map(function(x){ return x.c.name+': '+x.ri.numero+' — Rev '+x.ri.revTxt; }).join('\n')+'\n\nFaça isso quando as cartas forem enviadas.', function(){
+      lista.forEach(function(x){
+        var k = x.ri.k, revs = (k.revisoes||[]).slice();
+        revs.push({ rev: x.ri.revTxt, data: t.effectiveFrom+'-01', itens: x.ri.itens, motivo: 'Reajuste anual'+(x.ri.renumerou ? ' e renumeração' : ''), reajuste: t.effectiveFrom });
+        updateDoc('numeracao', k.id, { revisao: x.ri.rev, revisoes: revs, renumeracaoRegistrada: true });
+        updateDoc('clients', x.c.id, { proposalNumber: k.numero+' REV'+x.ri.revTxt });
+      });
+      if(window.PM_FB && PM_FB.toast) PM_FB.toast('Revisões registradas ✓', '', 3000);
+    });
+    if($('#modal-confirm-body')) $('#modal-confirm-body').style.whiteSpace = 'pre-line';
   };
   var base = function(){ return 'Cartas_Reajuste_'+($('#ct-rj').value||''); };
   $('#ct-print').onclick = function(){ printElement($('#reajuste-letters-area'), base(), $('#ct-hint')); };
@@ -8039,14 +8084,219 @@ function fbRunExtrasSync(){
    clientName, data, revisao, origem:'app'|'manual'|'historico', obs }.
    Contratos novos: CM 001/26, CM 002/26… (por ano). Propostas: sequência das propostas (036/26…). */
 var NUM_HISTORICO = {
+  // Renumeração aprovada em 02/11/2026: ordem cronológica dos contratos. Revisões lidas dos contratos nas pastas.
   contratos: [
-    ['002/19', 'Sans Souci', '', 4, ''], ['004/21', 'Parc', '', 3, ''], ['005/21', 'Bom Jardim', '', 3, ''],
-    ['006/21', 'Canton', '', 2, ''], ['007/21', 'Lyra', '', 2, ''],
-    ['001/24', 'Cleber', '2024-01-12', 0, 'Em nome de Wilgor Pinheiro Gonçalves', true],
-    ['030/24', 'Sader', '2024-09-10', 0, 'Usou o número da proposta (mantido assim)', true],
-    ['031/25', 'Ville', '2025-10-20', 0, 'Usou o número da proposta', true],
-    ['CM 001/25', 'Cleber', '2025-07-10', 0, 'Dois pontos: Residência e Confecção']
+ {
+  "numero": "CM 001/19",
+  "numeroAnterior": "002/19",
+  "kw": "Sans Souci",
+  "data": "2019-04-25",
+  "revisao": 4,
+  "revisoes": [
+   {
+    "rev": "01",
+    "data": "2020-09-02",
+    "itens": [
+     "Acréscimo de análise microbiológica anual e cloro extra; nome do síndico; valor"
+    ],
+    "motivo": "Reajuste de valor"
+   },
+   {
+    "rev": "02",
+    "data": "2022-01-10",
+    "itens": [
+     "Valor de R$ 180,00 para R$ 200,00"
+    ],
+    "motivo": "Reajuste de valor"
+   },
+   {
+    "rev": "03",
+    "data": "2023-01-02",
+    "itens": [
+     "Valor de R$ 200,00 para R$ 220,00"
+    ],
+    "motivo": "Reajuste de valor"
+   },
+   {
+    "rev": "04",
+    "data": "2025-03-10",
+    "itens": [
+     "Valor de R$ 220,00 para R$ 240,00"
+    ],
+    "motivo": "Reajuste de valor"
+   }
+  ]
+ },
+ {
+  "numero": "CM 002/21",
+  "numeroAnterior": "004/21",
+  "kw": "Parc",
+  "data": null,
+  "revisao": 3,
+  "revisoes": [
+   {
+    "rev": "01",
+    "data": "2022-01-01",
+    "itens": [
+     "Valor do contrato"
+    ],
+    "motivo": "Reajuste anual"
+   },
+   {
+    "rev": "02",
+    "data": "2023-01-02",
+    "itens": [
+     "Valor de R$ 200,00 para R$ 220,00"
+    ],
+    "motivo": "Reajuste anual"
+   },
+   {
+    "rev": "03",
+    "data": "2024-01-12",
+    "itens": [
+     "Cobrança de juros e multa após o vencimento"
+    ],
+    "motivo": ""
+   }
   ],
+  "regulariza": [
+   "Regularização: valor mensal praticado de R$ 240,00 (a Rev 03 indicava R$ 220,00)"
+  ]
+ },
+ {
+  "numero": "CM 003/21",
+  "numeroAnterior": "005/21",
+  "kw": "Bom Jardim",
+  "data": "2021-06-17",
+  "revisao": 4,
+  "revisoes": [
+   {
+    "rev": "01",
+    "data": "2022-01-15",
+    "itens": [
+     "Definição da quantidade de visitas/mês"
+    ],
+    "motivo": "Renovação/Nº visitas"
+   },
+   {
+    "rev": "02",
+    "data": "2023-12-15",
+    "itens": [
+     "Renovação com alteração de valores de R$ 300,00 para R$ 330,00"
+    ],
+    "motivo": "Renovação anual"
+   },
+   {
+    "rev": "03",
+    "data": "2024-01-12",
+    "itens": [
+     "Cobrança de juros e multa após o vencimento"
+    ],
+    "motivo": "Adequação de contrato"
+   },
+   {
+    "rev": "04",
+    "data": "2024-12-17",
+    "itens": [
+     "Renovação com alteração de valores de R$ 330,00 para R$ 350,00"
+    ],
+    "motivo": "Renovação anual"
+   }
+  ]
+ },
+ {
+  "numero": "CM 004/21",
+  "numeroAnterior": "006/21",
+  "kw": "Canton",
+  "data": "2021-07-13",
+  "revisao": 2,
+  "revisoes": [
+   {
+    "rev": "01",
+    "data": "2023-01-02",
+    "itens": [
+     "Valor de R$ 200,00 para R$ 220,00"
+    ],
+    "motivo": "Reajuste de valor"
+   },
+   {
+    "rev": "02",
+    "data": "2024-01-12",
+    "itens": [
+     "Cobrança de juros e multa após o vencimento"
+    ],
+    "motivo": ""
+   }
+  ],
+  "regulariza": [
+   "Regularização: 2 visitas técnicas por mês e valor praticado de R$ 400,00 (a Rev 02 indicava 1 visita e R$ 220,00)"
+  ]
+ },
+ {
+  "numero": "CM 005/21",
+  "numeroAnterior": "007/21",
+  "kw": "Lyra",
+  "data": "2021-10-14",
+  "revisao": 2,
+  "revisoes": [
+   {
+    "rev": "01",
+    "data": "2023-01-02",
+    "itens": [
+     "Valor de R$ 200,00 para R$ 230,00"
+    ],
+    "motivo": "Reajuste anual"
+   },
+   {
+    "rev": "02",
+    "data": "2024-01-12",
+    "itens": [
+     "Cobrança de juros e multa após o vencimento"
+    ],
+    "motivo": ""
+   }
+  ]
+ },
+ {
+  "numero": "CM 006/24",
+  "numeroAnterior": "030/24",
+  "kw": "Sader",
+  "data": "2024-09-10",
+  "revisao": 0,
+  "revisoes": [],
+  "regulariza": [
+   "Regularização: valor mensal praticado de R$ 240,00 (a Rev 00 indicava R$ 230,00)"
+  ]
+ },
+ {
+  "numero": "CM 007/25",
+  "numeroAnterior": "",
+  "kw": "Cleber",
+  "data": "2025-07-10",
+  "revisao": 0,
+  "revisoes": [],
+  "obs": "Dois pontos (Residência e Confecção). Substitui o contrato 001/24 (Wilgor – confecção)"
+ },
+ {
+  "numero": "CM 008/25",
+  "numeroAnterior": "031/25",
+  "kw": "Ville",
+  "data": "2025-10-20",
+  "revisao": 0,
+  "revisoes": []
+ },
+ {
+  "numero": "001/24",
+  "numeroAnterior": "",
+  "kw": "Cleber",
+  "data": "2024-01-12",
+  "revisao": 0,
+  "revisoes": [],
+  "encerrado": true,
+  "foraSequencia": true,
+  "obs": "Wilgor Pinheiro Gonçalves (confecção) — substituído pelo CM 007/25"
+ }
+],
   propostas: [
     ['089-1/17', 'Sans Souci', ''], ['089-2/17', 'Sans Souci', ''], ['002/20', 'Parc', ''], ['010/20', 'Lyra', ''],
     ['003/21', 'Bom Jardim', ''], ['004/21', 'Bom Jardim', ''], ['006/21', 'Canton', ''],
@@ -8090,7 +8340,7 @@ function numTabela(list, tipo){
     + list.map(function(n){
       var cli = n.clientId ? clientName(n.clientId) : '—';
       if(cli==='—') cli = n.clientName || '—';
-      return '<tr><td class="mono" style="white-space:nowrap;"><strong>'+esc(n.numero)+'</strong>'+(isRep(n) ? ' <span class="pill danger">repetido</span>' : '')+(tipo==='contrato' && numForaSeq(n) ? '<div class="hint" style="font-family:inherit;white-space:normal;">fora da sequência</div>' : '')+'</td>'
+      return '<tr><td class="mono" style="white-space:nowrap;"><strong>'+esc(n.numero)+'</strong>'+(isRep(n) ? ' <span class="pill danger">repetido</span>' : '')+(n.numeroAnterior ? '<div class="hint" style="font-family:inherit;">antes '+esc(n.numeroAnterior)+'</div>' : '')+(n.encerrado ? '<div><span class="pill neutral">encerrado</span></div>' : (tipo==='contrato' && numForaSeq(n) ? '<div class="hint" style="font-family:inherit;white-space:normal;">fora da sequência</div>' : ''))+'</td>'
         + '<td>'+esc(cli)+'</td><td>'+(n.data ? fmtDate(n.data) : '—')+'</td>'
         + (tipo==='contrato' ? '<td>REV '+String(n.revisao||0).padStart(2,'0')+'</td>' : '')
         + '<td>'+numOrigemPill(n.origem)+'</td><td class="hint">'+esc(n.obs||'')+'</td>'
@@ -8099,9 +8349,9 @@ function numTabela(list, tipo){
 }
 function renderNumeracao(){
   var L = numListas(), proxC = numContratoProximo(todayISO()), proxP = nextProposalNumberPreview();
-  var temHist = state.numeracao.some(function(n){ return n.origem==='historico'; });
+  var pendH = numHistoricoPendente(), temHist = !pendH.contratos && !pendH.propostas;
   var comContrato = {};
-  L.contratos.forEach(function(n){ if(n.clientId) comContrato[n.clientId] = true; });
+  L.contratos.forEach(function(n){ if(n.clientId && !n.encerrado) comContrato[n.clientId] = true; });
   var semContrato = state.clients.filter(function(c){ return clientCategoryOf(c)==='manutencao' && isActiveClient(c) && !comContrato[c.id]; });
   var actions = $('#page-actions');
   if(actions){ actions.innerHTML = '<button class="btn primary" id="num-add">+ Registrar número</button>'; $('#num-add').onclick = function(){ numModal(null); }; }
@@ -8113,9 +8363,9 @@ function renderNumeracao(){
     + '</div>';
   if(!temHist){
     html += '<div class="panel" style="margin-bottom:20px;"><div style="padding:16px 18px;line-height:1.55;">'
-      + '<strong>Trazer os números que já existem nas pastas</strong><br>'
-      + '<span class="hint">'+NUM_HISTORICO.contratos.length+' contratos e '+NUM_HISTORICO.propostas.length+' propostas de instalação encontrados em "Clientes manutenção ativos" (mapeamento de 02/11/2026). Fica tudo marcado como "pasta".</span>'
-      + '<div style="margin-top:10px;"><button class="btn primary" id="num-import">Importar histórico</button></div></div></div>';
+      + '<strong>Aplicar a numeração dos contratos aprovada (ordem cronológica) e trazer o histórico das pastas</strong><br>'
+      + '<span class="hint">Contratos renumerados de CM 001/19 a CM 008/25, com as revisões já feitas de cada um e o número antigo guardado; o 001/24 (Wilgor) fica como encerrado. Também entram as '+NUM_HISTORICO.propostas.length+' propostas de instalação das pastas. Se você já tinha importado a numeração antiga, ela é substituída.</span>'
+      + '<div style="margin-top:10px;"><button class="btn primary" id="num-import">Aplicar numeração e histórico</button></div></div></div>';
   }
   if(semContrato.length){
     html += '<div class="panel" style="margin-bottom:20px;border-color:var(--warn,#d97706);"><div style="padding:14px 18px;line-height:1.55;"><strong>Clientes de manutenção sem contrato registrado ('+semContrato.length+')</strong><br>'
@@ -8133,19 +8383,32 @@ function renderNumeracao(){
     customConfirm('Excluir o registro do número '+n.numero+'? O documento em si (PDF/Word) não é afetado.', function(){ deleteDoc('numeracao', n.id); });
   }; });
 }
+function numHistoricoPendente(){
+  var temCM = state.numeracao.some(function(n){ return n.tipo==='contrato' && n.numero==='CM 001/19'; });
+  var temProp = state.numeracao.some(function(n){ return n.tipo==='proposta' && n.origem==='historico'; });
+  return { contratos: !temCM, propostas: !temProp };
+}
 function numImportarHistorico(){
-  var now = new Date().toISOString();
-  NUM_HISTORICO.contratos.forEach(function(h){
-    var c = numClientByKw(h[1]), pr = numParse(h[0]);
-    numRegistrar({ tipo:'contrato', prefixo: pr.prefixo, seq: pr.seq, ano: pr.ano, numero: h[0], clientId: c ? c.id : null, clientName: c ? c.name : h[1],
-      data: h[2] || null, revisao: h[3] || 0, obs: h[4] || '', foraSequencia: !!h[5], origem: 'historico', criadoEm: now });
-  });
-  NUM_HISTORICO.propostas.forEach(function(h){
-    var c = numClientByKw(h[1]), pr = numParse(h[0]);
-    numRegistrar({ tipo:'proposta', prefixo:'', seq: pr.seq, ano: pr.ano, numero: h[0], clientId: c ? c.id : null, clientName: c ? c.name : h[1],
-      data: h[2] && /^\d{4}-/.test(h[2]) ? h[2] : null, obs: /^\d{4}-/.test(h[2]||'') ? '' : (h[2]||''), origem: 'historico', criadoEm: now });
-  });
-  if(window.PM_FB && PM_FB.toast) PM_FB.toast('Histórico importado ✓');
+  var now = new Date().toISOString(), pend = numHistoricoPendente();
+  if(pend.contratos){
+    // contratos importados antes com a numeração antiga saem; entram os renumerados (com as revisões)
+    state.numeracao.filter(function(n){ return n.tipo==='contrato' && n.origem==='historico'; }).forEach(function(n){ deleteDoc('numeracao', n.id); });
+    NUM_HISTORICO.contratos.forEach(function(h){
+      var c = numClientByKw(h.kw), pr = numParse(h.numero);
+      numRegistrar({ tipo:'contrato', prefixo: pr.prefixo, seq: pr.seq, ano: pr.ano, numero: h.numero, numeroAnterior: h.numeroAnterior || '',
+        clientId: c ? c.id : null, clientName: c ? c.name : h.kw, data: h.data || null, revisao: h.revisao || 0, revisoes: h.revisoes || [],
+        regulariza: h.regulariza || [], encerrado: !!h.encerrado, foraSequencia: !!h.foraSequencia,
+        obs: h.obs || (h.numeroAnterior ? 'Antes: '+h.numeroAnterior : ''), origem: 'historico', criadoEm: now });
+    });
+  }
+  if(pend.propostas){
+    NUM_HISTORICO.propostas.forEach(function(h){
+      var c = numClientByKw(h[1]), pr = numParse(h[0]);
+      numRegistrar({ tipo:'proposta', prefixo:'', seq: pr.seq, ano: pr.ano, numero: h[0], clientId: c ? c.id : null, clientName: c ? c.name : h[1],
+        data: null, obs: h[2] || '', origem: 'historico', criadoEm: now });
+    });
+  }
+  if(window.PM_FB && PM_FB.toast) PM_FB.toast('Numeração atualizada ✓');
 }
 function numModal(n){
   var isNew = !n, tipo0 = n ? n.tipo : 'contrato';
