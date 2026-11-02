@@ -862,7 +862,7 @@ button.pt-card{cursor:pointer;}
     <!-- Demais abas (Manutenções, Análises, Orçamentos) temporariamente
          removidas da navegação a pedido do usuário, para isolar o problema de conexão com o banco.
          O código continua abaixo, intacto, para religarmos assim que resolvido. -->
-    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 02/11 13:32</span></div>
+    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 02/11 14:45</span></div>
   </nav>
   <main id="main">
     <div id="topbar">
@@ -3126,7 +3126,7 @@ function buildCartaReajusteHTML(c, novo, dataCarta, first){
     + P('Dessa forma, a partir de <strong>'+esc(mesNovo)+'</strong>, a mensalidade do contrato ('+(pts.length ? esc(pts.length+' pontos de manutenção — '+tlJoin(pts.map(function(pt){ return pt.name; }))+' —, com 1 visita técnica por mês em cada') : esc(visitasLabel(vpm))+' por mês')+') passará de <strong>'+fmtMoney(valorAntes)+'</strong> para <strong>'+fmtMoney(valorNovo)+'</strong>'
         + (pts.length ? ' ('+pts.map(function(pt){ return esc(pt.name)+': '+fmtMoney(pointMonthlyValue(c, pt, novo.effectiveFrom)); }).join('; ')+')' : '')+'.'
         + (tabelaNova && valorNovo < tabelaNova ? ' Mantemos a condição especial do seu contrato: pelo valor de tabela, a mensalidade seria de '+fmtMoney(tabelaNova)+'.' : '')
-        + (extraMudou ? ' O valor da visita extra, quando solicitada, passará de '+fmtMoney(antes.priceExtra)+' para '+fmtMoney(novo.priceExtra)+'.' : ''))
+        + (extraMudou && !cartaRevisaoInfo(c, novo) ? ' O valor da visita extra, quando solicitada, passará de '+fmtMoney(antes.priceExtra)+' para '+fmtMoney(novo.priceExtra)+'.' : ''))
     + (function(){ var ri = cartaRevisaoInfo(c, novo); if(!ri) return '';
         var b = 'border:1px solid #9fb3c8;padding:6px 8px;vertical-align:top;';
         return '<p style="margin:10px 0 4px;"><strong>Revisão '+ri.revTxt+' do contrato Nº '+esc(ri.numero)+'</strong></p>'
@@ -3134,7 +3134,8 @@ function buildCartaReajusteHTML(c, novo, dataCarta, first){
           + '<th style="'+b+'background:#EEF4FB;text-align:center;width:15%;">Revisão</th><th style="'+b+'background:#EEF4FB;text-align:left;">Mudanças realizadas</th></tr>'
           + '<tr><td style="'+b+'text-align:center;"><strong>Rev '+ri.revTxt+'</strong><br><span style="font-size:11px;">'+esc(MESES_PT[Number(novo.effectiveFrom.slice(5,7))-1].slice(0,3)+'/'+novo.effectiveFrom.slice(0,4))+'</span></td>'
           + '<td style="'+b+'">'+ri.itens.map(function(t){ return '• '+esc(t); }).join('<br>')+'</td></tr></table>'
-          + (ri.renumerou ? '<p style="font-size:12px;color:#334155;margin-top:0;">A renumeração apenas organiza os contratos da P&amp;M em ordem cronológica; as demais condições do seu contrato permanecem as mesmas.</p>' : '');
+          + '<p style="font-size:12px;color:#334155;margin-top:0;">'+(ri.renumerou ? 'A renumeração apenas organiza os contratos da P&amp;M em ordem cronológica. ' : '')
+            + 'O contrato revisado também atualiza o valor da visita extra, quando solicitada, para <strong>'+fmtMoney(novo.priceExtra)+'</strong> e alinha a lista de análises ao pacote praticado hoje com o laboratório.</p>';
       })()
     + '<div>'
     + '<div>'
