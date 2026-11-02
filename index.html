@@ -800,7 +800,7 @@ button.pt-card{cursor:pointer;}
     window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(e){ console.warn('sw', e); }); });
   }
 
-  window.PM_FB = { ready: ready, db: db, errCount: function(){ return errCount; }, auth: auth, signOut: signOut, toast: toast };
+  window.PM_FB = { ready: ready, db: db, errCount: function(){ return errCount; }, auth: auth, signOut: signOut, toast: toast, config: CONFIG };
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ start(); if(!navigator.onLine) onOffline(); });
   else { start(); if(!navigator.onLine) onOffline(); }
 })();
@@ -858,7 +858,7 @@ button.pt-card{cursor:pointer;}
     <!-- Demais abas (Manutenções, Análises, Orçamentos) temporariamente
          removidas da navegação a pedido do usuário, para isolar o problema de conexão com o banco.
          O código continua abaixo, intacto, para religarmos assim que resolvido. -->
-    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 02/11 00:26</span></div>
+    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 02/11 00:49</span></div>
   </nav>
   <main id="main">
     <div id="topbar">
@@ -3077,6 +3077,7 @@ function cartaRevisaoInfo(c, novo){
     (k.regulariza||[]).forEach(function(t){ itens.push(t); });
     itens.push('Reajuste anual do contrato: valor mensal de '+fmtMoney(antes)+' para '+fmtMoney(depois)+' (+'+fmtMoney(round2((depois-antes)/nVis))+' por visita)');
     if(k.numeroAnterior && !k.renumeracaoRegistrada) itens.push('Renumeração contratual: o contrato Nº '+k.numeroAnterior+' passa a ser Nº '+k.numero);
+    if(!k.areaClienteRegistrada) itens.push('Inclusão da Área do Cliente (aplicativo P&M), com acesso individual por login e senha');
   }
   return { k: k, numero: k.numero, rev: rev, revTxt: String(rev).padStart(2,'0'), itens: itens, jaRegistrada: !!ja, renumerou: !!(k.numeroAnterior && !k.renumeracaoRegistrada) };
 }
@@ -3087,7 +3088,7 @@ function contratoRevisaoParams(c){
   var k = contratoDoCliente(c); if(!k) return null;
   var novo = proximoReajuste(), ri = novo ? cartaRevisaoInfo(c, novo) : null;
   var rows = (k.revisoes||[]).map(function(r){ return { rev: r.rev, data: r.data, itens: r.itens||[], motivo: r.motivo||'' }; });
-  if(ri && !ri.jaRegistrada) rows.push({ rev: ri.revTxt, data: novo.effectiveFrom+'-01', itens: ri.itens, motivo: 'Reajuste anual'+(ri.renumerou ? ' e renumeração' : '') });
+  if(ri && !ri.jaRegistrada) rows.push({ rev: ri.revTxt, data: novo.effectiveFrom+'-01', itens: ri.itens, motivo: 'Reajuste anual'+(ri.renumerou ? ', renumeração' : '')+(ri.itens.some(function(i){ return /Área do Cliente/.test(i); }) ? ' e Área do Cliente' : '') });
   return { k: k, novo: novo, numero: k.numero, revisao: ri ? ri.rev : (Number(k.revisao)||0), revisoes: rows,
     mk: novo ? novo.effectiveFrom : todayISO().slice(0,7), dataRev: novo ? novo.effectiveFrom+'-01' : todayISO(),
     servicosExtras: k.servicosExtras || [], autorizacaoExtra: !!k.autorizacaoExtra, direitoImagem: !!k.direitoImagem };
@@ -3135,13 +3136,14 @@ function buildCartaReajusteHTML(c, novo, dataCarta, first){
       + '<li>relatório de visita em duas vias, assinado pelo técnico responsável e pelo responsável no local;</li>'
       + '<li>relatório técnico completo em PDF após cada visita, com a inspeção dos componentes, as medições e as recomendações;</li>'
       + '<li>'+si.historico+'</li>'
-      + '<li>controle do horário de coleta e de entrega das amostras ao laboratório.</li>'
+      + '<li>controle do horário de coleta e de entrega das amostras ao laboratório;</li>'
+      + '<li><strong>Área do Cliente (aplicativo P&amp;M)</strong>, com login e senha individuais, para acompanhar relatórios, laudos e a qualidade da água — o acesso será entregue na visita de janeiro.</li>'
     + '</ul>'
     + P('Para dar mais previsibilidade, a partir de '+(Number(anoNovo)+1)+' os reajustes passarão a ser anuais, sempre em janeiro, pela variação do IPCA/IBGE acumulada nos 12 meses anteriores.')
     + P('Permanecemos à disposição para esclarecer qualquer dúvida.')
     + '<p>Atenciosamente,</p>'
     + '<div class="doc-sign" style="margin-top:10px;"><p>____________________________________<br>'+esc(COMPANY.signer)+'<br>'+esc(COMPANY.signerTitle)+' — '+esc(COMPANY.name)+'<br>'+esc(COMPANY.signerCRQ)+'</p></div>'
-    + docFooterHTML();
+    + '<div style="border-top:1px solid #C9D7E8;margin-top:10px;padding-top:6px;font-size:11px;color:#5B6B7E;text-align:center;">WhatsApp '+esc(COMPANY.phone)+' · Instagram '+esc(COMPANY.instagram)+' · '+esc(COMPANY.email)+'</div>';
 }
 function renderCartaBox(){
   var box = $('#carta-box'); if(!box) return;
@@ -3192,8 +3194,8 @@ function renderCartaBox(){
     customConfirm('Registrar a nova revisão no contrato de '+lista.length+' cliente(s)?\n\n'+lista.map(function(x){ return x.c.name+': '+x.ri.numero+' — Rev '+x.ri.revTxt; }).join('\n')+'\n\nFaça isso quando as cartas forem enviadas.', function(){
       lista.forEach(function(x){
         var k = x.ri.k, revs = (k.revisoes||[]).slice();
-        revs.push({ rev: x.ri.revTxt, data: t.effectiveFrom+'-01', itens: x.ri.itens, motivo: 'Reajuste anual'+(x.ri.renumerou ? ' e renumeração' : ''), reajuste: t.effectiveFrom });
-        updateDoc('numeracao', k.id, { revisao: x.ri.rev, revisoes: revs, renumeracaoRegistrada: true });
+        revs.push({ rev: x.ri.revTxt, data: t.effectiveFrom+'-01', itens: x.ri.itens, motivo: 'Reajuste anual'+(x.ri.renumerou ? ', renumeração' : '')+(x.ri.itens.some(function(i){ return /Área do Cliente/.test(i); }) ? ' e Área do Cliente' : ''), reajuste: t.effectiveFrom });
+        updateDoc('numeracao', k.id, { revisao: x.ri.rev, revisoes: revs, renumeracaoRegistrada: true, areaClienteRegistrada: true });
         updateDoc('clients', x.c.id, { proposalNumber: k.numero+' REV'+x.ri.revTxt });
       });
       if(window.PM_FB && PM_FB.toast) PM_FB.toast('Revisões registradas ✓', '', 3000);
@@ -3749,15 +3751,17 @@ function buildManutencaoProposalHTML(client, params, materiais){
         '<p style="margin:0;text-align:justify;">Visitas extras poderão ser solicitadas'+(params.autorizacaoExtra ? ' mediante autorização por escrito do contratante' : '')+' e atendidas, havendo disponibilidade da contratada, com prazo de até 24h. Será cobrado o valor de <strong>'+fmtMoney(precoExtra)+' ('+moedaPorExtenso(precoExtra)+')</strong> por visita extra solicitada'+(pontos ? ', em qualquer um dos pontos de atendimento' : '')+', acertado junto do vencimento mensal deste contrato. O valor não inclui materiais utilizados.</p>')
     + clausula('6', 'O QUE NÃO ESTÁ INCLUSO',
         '<p style="margin:0;text-align:justify;">Pequenos reparos poderão, ou não, de acordo com sua complexidade, estar inclusos, visto que não são o objeto principal deste contrato. Havendo necessidade de emprego de novo material, este não estará, em hipótese alguma, incluso.</p>')
-    + clausula('7', 'VIGÊNCIA, RENOVAÇÃO E CANCELAMENTO',
+    + clausula('7', 'ÁREA DO CLIENTE (APLICATIVO P&amp;M)',
+        '<p style="margin:0;text-align:justify;">O contratante terá acesso, sem custo adicional, à Área do Cliente da P&amp;M — aplicativo para celular e computador, com login e senha individuais —, onde poderá consultar os relatórios de cada visita, os laudos de análise do laboratório, o acompanhamento da qualidade da água (cloro, pH e temperatura) e este contrato com suas revisões, além de solicitar visitas extras e informar ocorrências. A senha é pessoal e de responsabilidade do contratante.</p>')
+    + clausula('8', 'VIGÊNCIA, RENOVAÇÃO E CANCELAMENTO',
         '<p style="margin:0;text-align:justify;">Este contrato terá vigência de '+esc(params.termMonths||12)+' meses, sendo renovado anualmente, e poderá ser cancelado a qualquer momento por qualquer das partes, bastando comunicação prévia. <strong>Não haverá taxas adicionais e/ou multas em caso de cancelamento.</strong> Na renovação poderão ocorrer variação de valores e revisão de serviços.</p>')
-    + clausula('8', 'VALOR E PAGAMENTO',
+    + clausula('9', 'VALOR E PAGAMENTO',
         '<p style="margin:0;text-align:justify;">Os serviços deste contrato terão custo mensal'+(pontos ? ' total' : '')+' de <strong>'+fmtMoney(custoMensal)+' ('+moedaPorExtenso(custoMensal)+')</strong>'
           + (pontos ? ', correspondente à soma dos pontos de atendimento: '+pontos.map(function(x, i){ return 'Ponto '+(i+1)+' – '+esc(x.nome)+': '+fmtMoney(x.valor); }).join('; ')+'. Os pontos são cobrados em um único boleto mensal' : '')
           + '. O pagamento se dará por boleto bancário com vencimento <strong>todo dia '+esc(params.dueDay||10)+' de cada mês</strong>. Após o vencimento, haverá cobrança de multa e juros previstos em lei, conforme o Código Tributário Nacional e o Código de Defesa do Consumidor.</p>'
           + (pontos ? '<p style="margin:6px 0 0;">A inclusão, retirada ou alteração de pontos de atendimento, bem como de seus valores, será formalizada por revisão deste contrato.</p>' : '')
           + materiaisHTML)
-    + (params.direitoImagem ? clausula('9', 'DIREITO DE IMAGEM',
+    + (params.direitoImagem ? clausula('10', 'DIREITO DE IMAGEM',
         '<p style="margin:0;text-align:justify;">Com o intuito de divulgar um trabalho sério, ético e técnico, a contratada poderá divulgar fotos e imagens dos serviços prestados, sempre com responsabilidade e respeito ao contratante. Marque abaixo a sua opção:</p>'
         + '<p style="margin:8px 0 0;">(&nbsp;&nbsp;&nbsp;) Estou de acordo com a divulgação &nbsp;&nbsp;&nbsp;&nbsp; (&nbsp;&nbsp;&nbsp;) Não estou de acordo com a divulgação</p>') : '')
     // aceite e assinaturas
@@ -7826,11 +7830,16 @@ async function ctrGerarRevisoesTodos(){
   if(!lista.length){ customAlert('Nenhum cliente com contrato registrado na aba Numeração. Aplique a numeração lá primeiro.'); return; }
   var titulo = function(x){ return 'Contrato de manutenção Nº '+x.info.numero+' — Rev '+String(x.info.revisao).padStart(2,'0')+' (para assinatura)'; };
   var jaTem = function(x){ return state.contratos.some(function(d){ return d.clientId===x.c.id && d.titulo===titulo(x); }); };
-  var novos = lista.filter(function(x){ return !jaTem(x); });
-  if(!novos.length){ customAlert('Os contratos revisados de todos os clientes já foram gerados. Para refazer algum, exclua o documento dele e clique de novo.'); return; }
+  var novos = lista, existentes = lista.filter(jaTem);
   customConfirm('Gerar e guardar o contrato revisado de '+novos.length+' cliente(s)?\n\n'+novos.map(function(x){ return x.c.name+' — '+x.info.numero+' Rev '+String(x.info.revisao).padStart(2,'0'); }).join('\n')
+      +(existentes.length ? '\n\n'+existentes.length+' já tinham sido gerados: as versões anteriores (ainda não assinadas) serão SUBSTITUÍDAS pelas novas.' : '')
       +'\n\nOs PDFs ficam em "Contratos dos clientes", sem aparecer para o cliente.', async function(){
-    var btn = $('#btn-rev-all'); if(btn){ btn.disabled = true; }
+    var btn = $('#btn-rev-all'); if(btn){ btn.disabled = true; btn.textContent = 'Preparando…'; }
+    for(var j=0;j<existentes.length;j++){
+      var ex = existentes[j];
+      var olds = state.contratos.filter(function(d){ return d.clientId===ex.c.id && d.titulo===titulo(ex); });
+      for(var q=0;q<olds.length;q++){ try{ if(olds[q].assetId) await fbAssets.delete(olds[q].assetId); }catch(e){ console.log(e); } await deleteDoc('contratos', olds[q].id); }
+    }
     var ok = 0, falhas = [];
     for(var i=0;i<novos.length;i++){
       var x = novos[i], c = x.c, info = x.info;
@@ -8561,6 +8570,209 @@ function numSyncClausulas(){
   });
   return n;
 }
+
+/* ===================== ÁREA DO CLIENTE — ACESSOS (login e senha de cada cliente) =====================
+   Administrador cria o acesso (e-mail + senha provisória gerada na hora, mostrada UMA vez e impressa na
+   folha de boas-vindas — o app não guarda senha). No primeiro acesso o cliente é obrigado a criar a
+   própria senha. Depois pode trocar pelo botão "Trocar senha". */
+var APP_URL = 'https://pemsolucao-prog.github.io/app/';
+var APP_QR_URI = 'data:image/png;base64,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';
+state.usersCli = state.usersCli || [];
+var acessoSub = false;
+function acessoSubscribe(){
+  if(acessoSub || !db) return; acessoSub = true;
+  db.collection('users').where('role','==','cliente').onSnapshot(function(snap){
+    state.usersCli.length = 0;
+    snap.docs.forEach(function(d){ var o = Object.assign({}, d.data()||{}); o.uid = d.id; state.usersCli.push(o); });
+    if(currentTab==='acessos' && !$('#modal').open) { try{ render(); }catch(e){} }
+  }, function(e){ console.log('users cliente', e); });
+}
+function acessoSlug(s){
+  var stop = ['condominio','cond','residencial','de','do','da','dos','das','e','clube','hotel'];
+  var w = String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().split(/[^a-z0-9]+/).filter(function(x){ return x && stop.indexOf(x)<0; });
+  return w.slice(0,2).join('').slice(0,20) || 'cliente';
+}
+function acessoSenha(){
+  var L = 'abcdefghjkmnpqrstuvwxyz', N = '23456789', r = function(s){ var a = new Uint32Array(1); crypto.getRandomValues(a); return s[a[0] % s.length]; };
+  return 'Pm' + r(N)+r(N)+r(N)+r(N) + r(L)+r(L)+r(L);
+}
+function acessoClientes(){
+  return state.clients.filter(function(c){ return clientCategoryOf(c)==='manutencao' && isActiveClient(c); }).sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
+}
+function acessoDoCliente(c){ return state.usersCli.filter(function(u){ return u.clientId===c.id; })[0] || null; }
+function acessoClientesHTML(){
+  var cl = acessoClientes();
+  var html = '<div class="panel" style="margin-bottom:20px;"><div class="panel-head"><h2>Acessos da Área do Cliente</h2><span class="hint">Login e senha de cada cliente — a senha nunca fica guardada no app</span></div>';
+  html += '<div class="tablewrap"><table><thead><tr><th>Cliente</th><th>Login (e-mail)</th><th>Situação</th><th></th></tr></thead><tbody>'
+    + cl.map(function(c){
+      var u = acessoDoCliente(c);
+      var sit = !u ? '<span class="pill neutral">Sem acesso</span>' : (u.mustChangePassword ? '<span class="pill warn">Criado — aguardando o 1º acesso</span>' : '<span class="pill ok">Ativo</span>');
+      return '<tr><td><strong>'+esc(c.name)+'</strong>'+(c.contactName?'<div class="hint">'+esc(c.contactName)+'</div>':'')+'</td><td class="mono" style="font-size:12px;">'+(u ? esc(u.email||'') : '—')+'</td><td>'+sit+'</td>'
+        + '<td style="white-space:nowrap;">'+(u
+          ? '<button class="btn small ac-folha" data-id="'+c.id+'">Folha de boas-vindas</button> <button class="btn small ac-reset" data-id="'+c.id+'">Redefinir senha</button>'
+          : '<button class="btn small primary ac-criar" data-id="'+c.id+'">Criar acesso</button>')+'</td></tr>';
+    }).join('') + '</tbody></table></div></div>';
+  return html;
+}
+function acessoWire(){
+  $all('.ac-criar').forEach(function(b){ b.onclick = function(){ acessoCriarModal(state.clients.find(function(c){ return c.id===b.dataset.id; })); }; });
+  $all('.ac-folha').forEach(function(b){ b.onclick = function(){ var c = state.clients.find(function(x){ return x.id===b.dataset.id; }); acessoFolhaModal(c, acessoDoCliente(c), null); }; });
+  $all('.ac-reset').forEach(function(b){ b.onclick = function(){
+    var c = state.clients.find(function(x){ return x.id===b.dataset.id; }), u = acessoDoCliente(c); if(!u) return;
+    var alias = /^pemsolucao\+/i.test(u.email||'');
+    customConfirm('Enviar e-mail para redefinir a senha de '+c.name+'?\n\nO link vai para '+u.email+(alias ? ' — que chega na caixa da P&M (pemsolucao@gmail.com). Abra o link, crie uma senha provisória e entregue ao cliente.' : '.'), function(){
+      PM_FB.auth.sendPasswordResetEmail(u.email).then(function(){ PM_FB.toast('E-mail de redefinição enviado ✓', '', 3500); }, function(e){ customAlert('Não foi possível enviar: '+(e && (e.code||e.message))); });
+    });
+    if($('#modal-confirm-body')) $('#modal-confirm-body').style.whiteSpace = 'pre-line';
+  }; });
+}
+// mostra o painel no topo da aba "Contas e acessos"
+var _renderAcessosOrig = renderAcessos;
+renderAcessos = function(){
+  _renderAcessosOrig();
+  if(fbRole!=='admin') return;
+  acessoSubscribe();
+  $('#view').insertAdjacentHTML('afterbegin', acessoClientesHTML());
+  acessoWire();
+};
+function acessoCriarModal(c){
+  if(!c) return;
+  var emailSug = (c.email && /@/.test(c.email)) ? c.email.trim() : 'pemsolucao+'+acessoSlug(c.name)+'@gmail.com';
+  var senha = acessoSenha();
+  $('#modal-title').textContent = 'Criar acesso — '+c.name;
+  $('#modal-body').innerHTML =
+      '<div class="field"><label>E-mail de login</label><input type="email" id="ac-email" value="'+esc(emailSug)+'"></div>'
+    + '<div class="hint" style="margin:-4px 0 12px;line-height:1.5;">'+(c.email ? 'Usando o e-mail do cadastro do cliente: o "Esqueci minha senha" chega para ele.' : 'O cliente não tem e-mail no cadastro. Este endereço é um apelido do Gmail da P&amp;M: funciona como login, e o "Esqueci minha senha" chega na caixa da P&amp;M. Se ele tiver e-mail próprio, digite aqui.')+'</div>'
+    + '<div class="field"><label>Nome de quem vai usar</label><input type="text" id="ac-nome" value="'+esc(c.contactName || c.name || '')+'"></div>'
+    + '<div class="field"><label>Senha provisória</label><div style="display:flex;gap:8px;"><input type="text" id="ac-senha" value="'+senha+'" readonly style="font-family:monospace;font-size:16px;letter-spacing:.06em;"><button type="button" class="btn small" id="ac-outra">Gerar outra</button></div></div>'
+    + '<div class="hint" style="line-height:1.5;">A senha provisória aparece só agora e vai impressa na folha de boas-vindas. Ela não fica guardada no app. No primeiro acesso, o cliente é obrigado a criar a senha dele.</div>'
+    + '<div class="hint" id="ac-msg" style="color:var(--danger,#b91c1c);margin-top:8px;"></div>';
+  $('#modal-foot').innerHTML = '<button class="btn" id="ac-cancel">Cancelar</button><button class="btn primary" id="ac-ok">Criar acesso</button>';
+  $('#ac-outra').onclick = function(){ $('#ac-senha').value = acessoSenha(); };
+  $('#ac-cancel').onclick = closeModal;
+  $('#ac-ok').onclick = async function(){
+    var email = $('#ac-email').value.trim().toLowerCase(), nome = $('#ac-nome').value.trim(), pass = $('#ac-senha').value, btn = this;
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ $('#ac-msg').textContent = 'E-mail inválido.'; return; }
+    btn.disabled = true; btn.textContent = 'Criando…';
+    var app2 = null;
+    try{
+      try{ app2 = firebase.app('pm-acesso'); }catch(e){ app2 = firebase.initializeApp(PM_FB.config, 'pm-acesso'); }
+      var cred = await app2.auth().createUserWithEmailAndPassword(email, pass);
+      var uid = cred.user.uid;
+      await db.collection('users').doc(uid).set({ role:'cliente', nome: nome, clientId: c.id, email: email, mustChangePassword: true, criadoEm: new Date().toISOString() });
+      try{ await app2.auth().signOut(); }catch(e){}
+      state.usersCli.push({ uid: uid, role:'cliente', nome: nome, clientId: c.id, email: email, mustChangePassword: true });
+      acessoFolhaModal(c, { email: email, nome: nome }, pass);
+    }catch(e){
+      btn.disabled = false; btn.textContent = 'Criar acesso';
+      var code = e && e.code;
+      $('#ac-msg').textContent = code==='auth/email-already-in-use' ? 'Esse e-mail já tem login. Use outro e-mail (ou fale comigo para ligar o login existente a este cliente).'
+        : code==='auth/weak-password' ? 'Senha fraca — gere outra.' : 'Não foi possível criar: '+(code || (e && e.message) || e);
+      try{ if(app2) await app2.auth().signOut(); }catch(x){}
+    }
+  };
+  openModal();
+}
+function acessoFolhaHTML(c, u, senha){
+  var box = 'border:1px solid #C9D7E8;border-radius:10px;padding:12px 14px;';
+  var real = u && u.email && !/^pemsolucao\+/i.test(u.email);
+  return docWatermarkHTML() + companyHeaderHTML()
+    + '<div style="background:#EEF4FB;border-left:5px solid #1B5FA8;border-radius:6px;padding:12px 16px;margin:4px 0 14px;">'
+      + '<div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#1B5FA8;font-weight:800;">Novidade P&amp;M</div>'
+      + '<div style="font-size:17px;font-weight:800;color:#123F73;margin-top:3px;">Bem-vindo à Área do Cliente</div>'
+      + '<div style="font-size:12.5px;color:#334155;">'+esc(c.name)+(u && u.nome && u.nome!==c.name ? ' · '+esc(u.nome) : '')+'</div></div>'
+    + '<table style="width:100%;border-collapse:collapse;"><tr><td style="vertical-align:top;padding-right:14px;">'
+      + '<div style="'+box+'margin-bottom:10px;"><div style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#5B6B7E;font-weight:700;">Endereço do aplicativo</div><div style="font-size:14px;font-weight:700;color:#123F73;word-break:break-all;">'+APP_URL.replace('https://','')+'</div></div>'
+      + '<div style="'+box+'margin-bottom:10px;"><div style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#5B6B7E;font-weight:700;">Seu login (e-mail)</div><div style="font-size:14px;font-weight:700;color:#123F73;word-break:break-all;">'+esc((u && u.email) || '')+'</div></div>'
+      + '<div style="'+box+'"><div style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#5B6B7E;font-weight:700;">Senha provisória</div><div style="font-size:18px;font-weight:800;color:#123F73;font-family:monospace;letter-spacing:.08em;">'+(senha ? esc(senha) : '________________')+'</div>'
+        + '<div style="font-size:11px;color:#5B6B7E;">'+(senha ? 'Válida só para o primeiro acesso.' : 'Anote aqui a senha entregue pela P&amp;M.')+'</div></div>'
+    + '</td><td style="width:170px;text-align:center;vertical-align:top;"><img src="'+APP_QR_URI+'" alt="QR Code do aplicativo" style="width:160px;height:160px;"><div style="font-size:11px;color:#5B6B7E;">Aponte a câmera do celular</div></td></tr></table>'
+    + '<p style="margin:16px 0 6px;font-weight:800;color:#123F73;">1. Primeiro acesso</p>'
+    + '<ol style="margin:0 0 0 18px;padding:0;line-height:1.55;"><li>Aponte a câmera do celular para o QR Code (ou digite o endereço no navegador).</li><li>Entre com o seu e-mail e a senha provisória.</li><li>O aplicativo vai pedir para você criar a sua senha (mínimo de 6 caracteres). Guarde-a com cuidado.</li></ol>'
+    + '<p style="margin:14px 0 6px;font-weight:800;color:#123F73;">2. Deixe o aplicativo na tela do celular</p>'
+    + '<table style="width:100%;border-collapse:collapse;font-size:12.5px;"><tr>'
+      + '<td style="'+box+'vertical-align:top;width:50%;"><strong>Android (Chrome)</strong><br>Toque no menu <strong>⋮</strong> (canto superior direito) e escolha <strong>"Instalar app"</strong> ou <strong>"Adicionar à tela inicial"</strong>.</td>'
+      + '<td style="width:10px;"></td>'
+      + '<td style="'+box+'vertical-align:top;"><strong>iPhone (Safari)</strong><br>Toque no botão <strong>Compartilhar</strong> (quadrado com seta para cima) e escolha <strong>"Adicionar à Tela de Início"</strong>.</td></tr></table>'
+    + '<p style="margin:14px 0 6px;font-weight:800;color:#123F73;">3. Trocar a senha quando quiser</p>'
+    + '<p style="margin:0;line-height:1.55;">Dentro do aplicativo, toque em <strong>"Trocar senha"</strong>, no topo da tela. '+(real ? 'Se esquecer a senha, use <strong>"Esqueci minha senha"</strong> na tela de entrada: o link chega no seu e-mail.' : 'Se esquecer a senha, fale com a P&amp;M pelo WhatsApp que enviamos uma nova.')+'</p>'
+    + '<p style="margin:14px 0 6px;font-weight:800;color:#123F73;">O que você encontra na Área do Cliente</p>'
+    + '<p style="margin:0;line-height:1.55;">Relatórios de cada visita · Laudos de análise do laboratório · Qualidade da água (cloro, pH e temperatura) · Seu contrato e revisões · Pedido de visita extra e aviso de ocorrências · WhatsApp direto com a P&amp;M</p>'
+    + docFooterHTML();
+}
+function acessoFolhaModal(c, u, senha){
+  $('#modal-title').textContent = senha ? 'Acesso criado ✓' : 'Folha de boas-vindas';
+  $('#modal-body').innerHTML = (senha ? '<div class="rj-banner ok" style="margin-bottom:12px;line-height:1.5;"><span>Acesso de <strong>'+esc(c.name)+'</strong> criado. <strong>Salve ou imprima a folha agora</strong>: a senha provisória não fica guardada e não aparece de novo.</span></div>' : '<div class="hint" style="margin-bottom:12px;">Sem a senha provisória (ela não fica guardada). Se o cliente perdeu a senha, use "Redefinir senha".</div>')
+    + '<div id="ac-folha" class="doc-page print-doc doc-compact" style="max-width:800px;">'+acessoFolhaHTML(c, u, senha)+'</div>';
+  $('#modal-foot').innerHTML = '<span class="hint" id="ac-hint"></span><button class="btn" id="ac-fechar">Fechar</button><button class="btn primary" id="ac-pdf">Salvar PDF</button>';
+  $('#ac-fechar').onclick = function(){ if(senha){ customConfirm('Já salvou ou imprimiu a folha? A senha provisória não aparece de novo.', closeModal); } else closeModal(); };
+  $('#ac-pdf').onclick = function(){ exportElementAsPDF($('#ac-folha'), 'Area_do_Cliente_'+acessoSlug(c.name), $('#ac-hint')); };
+  if(!$('#modal').open) openModal();
+}
+
+/* ---- cliente: primeira senha obrigatória e "Trocar senha" ---- */
+function acessoSenhaFormHTML(obrig){
+  return '<form id="ac-sf" class="pt-form" novalidate>'
+    + (obrig ? '' : '<label>Senha atual<input type="password" id="sf-atual" autocomplete="current-password"></label>')
+    + '<label>Nova senha<input type="password" id="sf-nova" autocomplete="new-password" minlength="6"></label>'
+    + '<label>Repita a nova senha<input type="password" id="sf-rep" autocomplete="new-password"></label>'
+    + '<div class="pt-msg" id="sf-msg"></div>'
+    + '<button type="submit" class="btn primary pt-send">'+(obrig ? 'Criar minha senha' : 'Trocar senha')+'</button></form>';
+}
+function acessoSenhaWire(obrig, done){
+  $('#ac-sf').addEventListener('submit', async function(ev){
+    ev.preventDefault();
+    var nova = $('#sf-nova').value, rep = $('#sf-rep').value, msg = $('#sf-msg'), btn = this.querySelector('button[type=submit]');
+    if(nova.length < 6){ msg.textContent = 'A senha precisa ter pelo menos 6 caracteres.'; return; }
+    if(nova !== rep){ msg.textContent = 'As duas senhas não são iguais.'; return; }
+    btn.disabled = true; msg.textContent = '';
+    try{
+      var user = PM_FB.auth.currentUser;
+      if(!obrig){
+        var cred = firebase.auth.EmailAuthProvider.credential(user.email, $('#sf-atual').value);
+        await user.reauthenticateWithCredential(cred);
+      }
+      await user.updatePassword(nova);
+      if(fbProfile.mustChangePassword){
+        await db.collection('users').doc(user.uid).update({ mustChangePassword: false, senhaTrocadaEm: new Date().toISOString() });
+        fbProfile.mustChangePassword = false;
+        try{ localStorage.setItem('pmfb.profile.'+user.uid, JSON.stringify(fbProfile)); }catch(e){}
+      }
+      PM_FB.toast('Senha salva ✓', '', 3000);
+      done();
+    }catch(e){
+      btn.disabled = false;
+      var code = e && e.code;
+      msg.textContent = (code==='auth/wrong-password' || code==='auth/invalid-credential') ? 'A senha atual não confere.'
+        : code==='auth/requires-recent-login' ? 'Por segurança, saia e entre de novo e repita a troca.'
+        : code==='auth/weak-password' ? 'Senha muito fraca. Use pelo menos 6 caracteres.' : 'Não foi possível salvar: '+(code || (e && e.message) || e);
+    }
+  });
+}
+var _renderPortalOrig = renderPortal;
+renderPortal = function(force){
+  if(fbRole==='cliente' && fbProfile && fbProfile.mustChangePassword){
+    $('#view').innerHTML = '<div class="pt-wrap"><div class="pt-head"><img src="'+COMPANY_LOGO_DATA_URI+'" alt="P&amp;M Soluções em Água" class="pt-logo"><button type="button" class="btn small" id="pt-out">Sair</button></div>'
+      + '<h1 class="pt-hello">Bem-vindo!</h1><p class="pt-k2" style="margin:0 2px 14px;line-height:1.5;">Este é o seu primeiro acesso. Crie agora a sua senha pessoal (mínimo de 6 caracteres) — a senha provisória deixa de valer.</p>'
+      + acessoSenhaFormHTML(true) + '</div>';
+    $('#pt-out').onclick = function(){ window.PM_FB.signOut(); };
+    acessoSenhaWire(true, function(){ renderPortal(true); });
+    return;
+  }
+  _renderPortalOrig(force);
+  var out = $('#pt-out');
+  if(fbRole==='cliente' && out && !$('#pt-senha')){
+    out.insertAdjacentHTML('beforebegin', '<button type="button" class="btn small" id="pt-senha" style="margin-right:6px;">Trocar senha</button>');
+    $('#pt-senha').onclick = function(){
+      $('#modal-title').textContent = 'Trocar senha';
+      $('#modal-body').innerHTML = acessoSenhaFormHTML(false);
+      $('#modal-foot').innerHTML = '<button class="btn" id="sf-cancel">Cancelar</button>';
+      $('#sf-cancel').onclick = closeModal;
+      acessoSenhaWire(false, closeModal);
+      openModal();
+    };
+  }
+};
 
 /* ===================== BOOT ===================== */
 goTab('dashboard');
