@@ -862,7 +862,7 @@ button.pt-card{cursor:pointer;}
     <!-- Demais abas (Manutenções, Análises, Orçamentos) temporariamente
          removidas da navegação a pedido do usuário, para isolar o problema de conexão com o banco.
          O código continua abaixo, intacto, para religarmos assim que resolvido. -->
-    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 02/11 15:28</span></div>
+    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 02/11 15:44</span></div>
   </nav>
   <main id="main">
     <div id="topbar">
@@ -5283,11 +5283,19 @@ function renderTalaoEditor(){
       nextDueDate: status==='Concluída' ? (talao.proximaVisita || addDays(d, MANUT_INTERVALO_DIAS)) : null
     };
     if(conclude && !(v && v.status==='Concluída')) data.concludedAt = new Date().toISOString();
-    if(v){ await updateDoc('maintenanceVisits', v.id, data); return v.id; }
+    // atualiza a cópia na tela na hora: o relatório abre já com o que acabou de ser preenchido
+    // (sem esperar o banco devolver a alteração)
+    if(v){
+      state.visits.forEach(function(x){ if(x.id===v.id) Object.assign(x, data); });
+      Object.assign(v, data);
+      await updateDoc('maintenanceVisits', v.id, data); return v.id;
+    }
     data.createdAt = new Date().toISOString();
     data.systemsChecked = [];
     if(manutView.presetSol) data.solicitacaoId = manutView.presetSol; // visita aberta a partir de uma solicitação do cliente
-    return await createDoc('maintenanceVisits', data);
+    var novoId = await createDoc('maintenanceVisits', data);
+    if(novoId && !state.visits.some(function(x){ return x.id===novoId; })) state.visits.push(Object.assign({ id: novoId }, data));
+    return novoId;
   }
   $('#tl-save').onclick = async function(){ var id = await save(false); if(id){ customAlert('Relatório salvo.'); manutView.id = id; } };
   $('#tl-finish').onclick = async function(){ var id = await save(true); if(!id) return; if(fbRole==='tecnico'){ window.PM_FB.toast('Relatório concluído e salvo ✓', '', 3500); goTab('campo'); } else openVisitReport(id); };
