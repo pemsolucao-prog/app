@@ -689,7 +689,7 @@ button.pt-card{cursor:pointer;}
   }
   function errMsg(e){
     var c = (e && e.code) || '';
-    if(/invalid-credential|wrong-password|user-not-found|invalid-login-credentials/.test(c)) return 'E-mail ou senha incorretos.';
+    if(/invalid-credential|wrong-password|user-not-found|invalid-login-credentials/.test(c)) return 'Login ou senha incorretos.';
     if(/too-many-requests/.test(c)) return 'Muitas tentativas seguidas. Espere alguns minutos ou use "Esqueci minha senha".';
     if(/network-request-failed/.test(c)) return 'Sem internet. Para entrar pela primeira vez neste aparelho é preciso estar conectado.';
     if(/invalid-email/.test(c)) return 'Esse e-mail não parece válido.';
@@ -697,10 +697,19 @@ button.pt-card{cursor:pointer;}
     if(/missing-password/.test(c)) return 'Digite a senha.';
     return 'Não foi possível entrar ('+(c||'erro')+').';
   }
+  // Login por e-mail OU pelo número do WhatsApp (o número vira um login interno da P&M)
+  function loginParaEmail(txt){
+    txt = String(txt||'').trim();
+    if(txt.indexOf('@') > -1) return txt.toLowerCase();
+    var d = txt.replace(/\D/g,'');
+    if(d.length < 10) return '';
+    if(!(d.indexOf('55')===0 && d.length >= 12)) d = '55' + d;
+    return 'pemsolucao+wa' + d + '@gmail.com';
+  }
   function showLogin(msg, kind){
-    card(head('Entre com o seu e-mail e senha.')
+    card(head('Entre com o seu e-mail ou o número do WhatsApp, e a senha.')
       + '<form id="pmfb-form" novalidate>'
-      + '<label>E-mail<input type="email" id="pmfb-email" autocomplete="username" inputmode="email" required></label>'
+      + '<label>E-mail ou WhatsApp (com DDD)<input type="text" id="pmfb-email" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="ex.: (22) 99999-9999" required></label>'
       + '<label>Senha<input type="password" id="pmfb-pass" autocomplete="current-password" required></label>'
       + '<div class="pmfb-msg '+(kind||'')+'" id="pmfb-msg">'+(msg||'')+'</div>'
       + '<button type="submit" class="pmfb-btn" id="pmfb-go">Entrar</button>'
@@ -712,19 +721,27 @@ button.pt-card{cursor:pointer;}
     (em.value ? document.getElementById('pmfb-pass') : em).focus();
     form.addEventListener('submit', function(ev){
       ev.preventDefault();
-      var email = em.value.trim(), pass = document.getElementById('pmfb-pass').value;
+      var digitado = em.value.trim(), email = loginParaEmail(digitado), pass = document.getElementById('pmfb-pass').value;
       var m = document.getElementById('pmfb-msg'), b = document.getElementById('pmfb-go');
-      if(!email){ m.className = 'pmfb-msg err'; m.textContent = 'Digite o seu e-mail.'; return; }
+      if(!digitado){ m.className = 'pmfb-msg err'; m.textContent = 'Digite o seu e-mail ou o número do WhatsApp.'; return; }
+      if(!email){ m.className = 'pmfb-msg err'; m.textContent = 'Digite o número do WhatsApp com DDD, por exemplo (22) 99999-9999.'; return; }
       b.disabled = true; b.textContent = 'Entrando…'; m.textContent = '';
-      try{ localStorage.setItem('pmfb.lastEmail', email); }catch(e){}
+      try{ localStorage.setItem('pmfb.lastEmail', digitado); }catch(e){}
       auth.signInWithEmailAndPassword(email, pass).catch(function(e){
         b.disabled = false; b.textContent = 'Entrar';
         m.className = 'pmfb-msg err'; m.textContent = errMsg(e);
       });
     });
     document.getElementById('pmfb-forgot').addEventListener('click', function(){
-      var email = em.value.trim(), m = document.getElementById('pmfb-msg');
-      if(!email){ m.className = 'pmfb-msg err'; m.textContent = 'Digite o seu e-mail acima e toque de novo em "Esqueci minha senha".'; em.focus(); return; }
+      var digitado = em.value.trim(), email = loginParaEmail(digitado), m = document.getElementById('pmfb-msg');
+      if(!email){ m.className = 'pmfb-msg err'; m.textContent = 'Digite o seu e-mail ou WhatsApp acima e toque de novo em "Esqueci minha senha".'; em.focus(); return; }
+      if(digitado.indexOf('@') < 0){
+        // login pelo WhatsApp: o link de nova senha chega para a P&M, que manda a senha nova pelo WhatsApp
+        auth.sendPasswordResetEmail(email).catch(function(){});
+        m.className = 'pmfb-msg ok';
+        m.innerHTML = 'Pedido enviado para a P&amp;M. Você vai receber uma senha nova pelo WhatsApp. Se preferir, <a href="https://wa.me/5522981602353?text='+encodeURIComponent('Olá! Esqueci a senha da Área do Cliente. Meu login é o WhatsApp '+digitado+'.')+'" target="_blank" rel="noopener">fale com a gente agora</a>.';
+        return;
+      }
       auth.sendPasswordResetEmail(email).then(function(){
         m.className = 'pmfb-msg ok'; m.textContent = 'Se esse e-mail tiver acesso, chega em instantes um link para criar uma nova senha. Olhe também o spam.';
       }).catch(function(e){
@@ -771,7 +788,13 @@ button.pt-card{cursor:pointer;}
       try{ Object.keys(localStorage).forEach(function(k){ if(k.indexOf('pmfb.profile.')===0) localStorage.removeItem(k); }); }catch(e){}
       try{ return fs.terminate().then(function(){ return fs.clearPersistence(); }).catch(function(e){ console.warn('limpar cópia local', e); }); }catch(e){ return Promise.resolve(); }
     };
-    auth.signOut().then(wipe, wipe).then(go, go);
+    var sair = function(){ auth.signOut().then(wipe, wipe).then(go, go); };
+    // Não deixa sair (e apagar a cópia local) com alteração que ainda não chegou ao servidor
+    confirmado(4000).then(function(r){
+      if(r==='ok'){ sair(); return; }
+      var msg = 'Há alterações feitas neste aparelho que AINDA NÃO chegaram ao servidor (internet fraca ou rede bloqueada).\n\nSe sair agora, elas se perdem. Conecte em outra rede (ex.: 4G do celular), espere aparecer "salvo" e saia depois.\n\nSair mesmo assim e perder essas alterações?';
+      if(typeof customConfirm==='function') customConfirm(msg, sair); else if(window.confirm(msg)) sair();
+    });
   }
 
   /* ---------- sessão ---------- */
@@ -820,7 +843,12 @@ button.pt-card{cursor:pointer;}
     window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(e){ console.warn('sw', e); }); });
   }
 
-  window.PM_FB = { ready: ready, db: db, errCount: function(){ return errCount; }, auth: auth, signOut: signOut, toast: toast, config: CONFIG };
+  // Espera o servidor confirmar TODAS as gravações pendentes deste aparelho (ou desiste em ms).
+  function confirmado(ms){
+    if(!fs.waitForPendingWrites) return Promise.resolve('ok');
+    return Promise.race([fs.waitForPendingWrites().then(function(){ return 'ok'; }), new Promise(function(r){ setTimeout(function(){ r('lento'); }, ms||8000); })]);
+  }
+  window.PM_FB = { ready: ready, db: db, confirmado: confirmado, pendentes: function(){ return fs.waitForPendingWrites ? fs.waitForPendingWrites() : Promise.resolve(); }, errCount: function(){ return errCount; }, auth: auth, signOut: signOut, toast: toast, config: CONFIG, loginParaEmail: loginParaEmail };
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ start(); if(!navigator.onLine) onOffline(); });
   else { start(); if(!navigator.onLine) onOffline(); }
 })();
@@ -878,7 +906,7 @@ button.pt-card{cursor:pointer;}
     <!-- Demais abas (Manutenções, Análises, Orçamentos) temporariamente
          removidas da navegação a pedido do usuário, para isolar o problema de conexão com o banco.
          O código continua abaixo, intacto, para religarmos assim que resolvido. -->
-    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 02/11 17:11</span></div>
+    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 02/11 19:14</span></div>
   </nav>
   <main id="main">
     <div id="topbar">
@@ -3112,6 +3140,23 @@ function contratoNumeroCliente(c){
   var rev = ' REV'+String(Number(k.revisao)||0).padStart(2,'0');
   return ((k.numeroAnterior && !k.renumeracaoRegistrada) ? k.numeroAnterior : k.numero) + rev;
 }
+// Envia um PDF pelo WhatsApp: no celular abre a tela de compartilhar (escolhe o contato);
+// no computador salva o PDF e abre a conversa do cliente no WhatsApp para anexar.
+function waNumero(tel){ var d = String(tel||'').replace(/\D/g,''); if(!d) return ''; if(!(d.indexOf('55')===0 && d.length>=12)) d = '55'+d; return d; }
+async function compartilharPdfWhatsApp(blob, nome, telefone, texto){
+  var f = new File([blob], nome, { type: 'application/pdf' });
+  try{ if(navigator.canShare && navigator.canShare({ files: [f] })){ await navigator.share({ files: [f], title: nome, text: texto||'' }); return; } }
+  catch(e){ if(e && e.name==='AbortError') return; console.log('share', e); }
+  try{ var url = URL.createObjectURL(f), a = document.createElement('a'); a.href = url; a.download = nome; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(url); }, 60000); }
+  catch(e){ await deliverPdfBlob(f, nome, 'o PDF'); }
+  var n = waNumero(telefone);
+  window.open('https://wa.me/'+n+(texto ? '?text='+encodeURIComponent(texto) : ''), '_blank', 'noopener');
+  if(window.PM_FB && PM_FB.toast) PM_FB.toast('PDF salvo. Na conversa que abriu, anexe o arquivo (clipe › Documento).', '', 5000);
+}
+async function pdfDeHtml(html, classes){
+  var area = document.createElement('div'); area.className = classes || 'doc-page print-doc doc-compact'; area.innerHTML = html;
+  return await buildPaginatedPdfBlob(area);
+}
 function proximoReajuste(){ return futureReajustes()[0] || null; }
 // Parâmetros para gerar o contrato de um cliente que JÁ tem contrato: mesmo número, revisão nova,
 // histórico de revisões completo e as cláusulas próprias dele (guardadas na aba Numeração).
@@ -3172,7 +3217,7 @@ function buildCartaReajusteHTML(c, novo, dataCarta, first){
       + '<li>relatório técnico completo em PDF após cada visita, com a inspeção dos componentes, as medições e as recomendações;</li>'
       + '<li>'+si.historico+'</li>'
       + '<li>controle do horário de coleta e de entrega das amostras ao laboratório;</li>'
-      + '<li><strong>Área do Cliente (aplicativo P&amp;M)</strong>, com login e senha individuais, para acompanhar relatórios, laudos e a qualidade da água — o acesso será entregue na visita de janeiro.</li>'
+      + '<li><strong>Área do Cliente (aplicativo P&amp;M)</strong>, para acompanhar relatórios e laudos, com login e senha individuais, entregue em janeiro; acessos adicionais somente mediante solicitação por escrito à P&amp;M.</li>'
     + '</ul></div></div>'
     + P('Para dar mais previsibilidade, a partir de '+(Number(anoNovo)+1)+' os reajustes passarão a ser anuais, sempre em janeiro, pela variação do IPCA/IBGE acumulada nos 12 meses anteriores.')
     + P('Permanecemos à disposição para esclarecer qualquer dúvida.')
@@ -3201,6 +3246,7 @@ function renderCartaBox(){
     + '<div id="ct-out" style="display:none;margin-top:18px;">'
       + '<div style="max-width:800px;margin:0 auto 12px;display:flex;justify-content:flex-end;gap:10px;align-items:center;"><span class="hint" id="ct-hint"></span><button class="btn" id="ct-reg">Registrar revisões nos contratos</button><button class="btn" id="ct-print">Imprimir</button><button class="btn primary" id="ct-pdf">Salvar PDF</button></div>'
       + '<div class="hint" style="max-width:800px;margin:0 auto 10px;">Uma carta por página. Dá para clicar no texto e ajustar antes de salvar o PDF.</div>'
+      + '<div id="ct-wa" style="max-width:800px;margin:0 auto 14px;"></div>'
       + '<div id="reajuste-letters-area" class="doc-page print-doc doc-compact doc-carta" contenteditable="true"></div>'
     + '</div>';
   function ctVals(){
@@ -3222,6 +3268,24 @@ function renderCartaBox(){
     var html = ids.map(function(id, i){ var c = state.clients.find(function(x){ return x.id===id; }); return buildCartaReajusteHTML(c, t, d, i===0); }).join('');
     $('#reajuste-letters-area').innerHTML = html;
     $('#ct-out').style.display = 'block';
+    var waBox = $('#ct-wa');
+    if(waBox){
+      waBox.innerHTML = '<div class="section-title" style="margin-top:0;">Enviar pelo WhatsApp — uma carta por cliente</div>'
+        + ids.map(function(id){ var c = state.clients.find(function(x){ return x.id===id; }); if(!c) return '';
+            return '<div class="event-item"><span><strong>'+esc(c.name)+'</strong> <span class="hint">'+esc(c.phone||'sem telefone no cadastro')+'</span></span>'
+              + '<button type="button" class="btn small ct-wa-btn" data-id="'+c.id+'">Enviar pelo WhatsApp</button></div>'; }).join('');
+      $all('.ct-wa-btn').forEach(function(b){ b.onclick = async function(){
+        var c = state.clients.find(function(x){ return x.id===b.dataset.id; }); if(!c) return;
+        b.disabled = true; b.textContent = 'Preparando…';
+        try{
+          var blob = await pdfDeHtml(buildCartaReajusteHTML(c, t, d, true), 'doc-page print-doc doc-compact doc-carta');
+          await compartilharPdfWhatsApp(blob, 'Carta_Revisao_'+String(c.name||'cliente').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^0-9A-Za-z]+/g,'_')+'.pdf', c.phone,
+            'Olá! Segue a carta da P&M Soluções em Água com o comunicado de revisão do contrato de manutenção. Qualquer dúvida, estamos à disposição.');
+          b.textContent = 'Enviado ✓';
+        }catch(e){ b.textContent = 'Enviar pelo WhatsApp'; customAlert('Não foi possível gerar o PDF: '+(e && e.message || e)); }
+        b.disabled = false;
+      }; });
+    }
     $('#ct-out').scrollIntoView({behavior:'smooth', block:'start'});
   };
   $('#ct-reg').onclick = function(){
@@ -3790,7 +3854,7 @@ function buildManutencaoProposalHTML(client, params, materiais){
     + clausula('6', 'O QUE NÃO ESTÁ INCLUSO',
         '<p style="margin:0;text-align:justify;">Pequenos reparos poderão, ou não, de acordo com sua complexidade, estar inclusos, visto que não são o objeto principal deste contrato. Havendo necessidade de emprego de novo material, este não estará, em hipótese alguma, incluso.</p>')
     + clausula('7', 'ÁREA DO CLIENTE (APLICATIVO P&amp;M)',
-        '<p style="margin:0;text-align:justify;">O contratante terá acesso, sem custo adicional, à Área do Cliente da P&amp;M — aplicativo para celular e computador, com login e senha individuais —, onde poderá consultar os relatórios de cada visita, os laudos de análise do laboratório, o acompanhamento da qualidade da água (cloro, pH e temperatura) e este contrato com suas revisões, além de solicitar visitas extras e informar ocorrências. A senha é pessoal e de responsabilidade do contratante.</p>')
+        '<p style="margin:0;text-align:justify;">O contratante terá acesso, sem custo adicional, à Área do Cliente da P&amp;M — aplicativo para celular e computador, com login e senha individuais —, onde poderá consultar os relatórios de cada visita, os laudos de análise do laboratório, o acompanhamento da qualidade da água (cloro, pH e temperatura) e este contrato com suas revisões, além de solicitar visitas extras e informar ocorrências. O acesso é individual: cada responsável indicado pelo contratante recebe login e senha próprios, pessoais e intransferíveis, que não devem ser compartilhados. A inclusão de novos responsáveis, a troca ou a remoção de acessos deve ser solicitada pelo contratante à P&amp;M, por escrito (WhatsApp ou e-mail); a P&amp;M não cria acessos por pedido de terceiros. Cabe ao contratante avisar a P&amp;M quando um responsável deixar de representá-lo, para que o acesso seja removido, respondendo pelo uso dos acessos que indicou até essa comunicação.</p>')
     + clausula('8', 'VIGÊNCIA, RENOVAÇÃO E CANCELAMENTO',
         '<p style="margin:0;text-align:justify;">Este contrato terá vigência de '+esc(params.termMonths||12)+' meses, sendo renovado anualmente, e poderá ser cancelado a qualquer momento por qualquer das partes, bastando comunicação prévia. <strong>Não haverá taxas adicionais e/ou multas em caso de cancelamento.</strong> Na renovação poderão ocorrer variação de valores e revisão de serviços.</p>')
     + clausula('9', 'VALOR E PAGAMENTO',
@@ -4900,13 +4964,30 @@ function openClientModal(id, presetCategory, presetStatus){
     else if(c && hasClientValue(c) && Number(c.monthlyValue)===mv && c.monthlyValueRef && !(inclEl && c.monthlyValueRef>=futR[0].effectiveFrom)) data.monthlyValueRef = c.monthlyValueRef;
     else data.monthlyValueRef = todayISO().slice(0,7);
     if(c && !pkgTouched){ delete data.packageIds; delete data.looseParamsSelected; } // não mexe nos pacotes salvos
-    if(c){
-      await updateDoc('clients', c.id, data);
-    } else {
-      data.createdAt = new Date().toISOString();
-      await createDoc('clients', data);
+    var saveBtn = $('#m-save'), aviso = function(msg, kind, ms){ try{ if(window.PM_FB && PM_FB.toast) PM_FB.toast(msg, kind, ms); }catch(e){} };
+    try{
+      if(c) await updateDoc('clients', c.id, data);
+      else { data.createdAt = new Date().toISOString(); await createDoc('clients', data); }
+    }catch(e){
+      customAlert('Não foi possível salvar o cadastro.\n\nMotivo: '+((e && (e.code || e.message)) || e)+'\n\nTire um print desta mensagem.');
+      return;
     }
     closeModal();
+    // A gravação vale na hora neste aparelho; aqui conferimos se chegou ao servidor.
+    if(window.PM_FB && PM_FB.confirmado){
+      PM_FB.confirmado(8000).then(function(r){
+        if(r==='ok') aviso('Cadastro de '+data.name+' salvo ✓', 'ok', 2500);
+        else {
+          aviso('Ainda NÃO chegou ao servidor (internet fraca ou rede bloqueada). A alteração de '+data.name+' está só neste aparelho. Não clique em Sair; quando a conexão voltar, aparece "salvo".', 'err', 12000);
+          PM_FB.pendentes().then(function(){ aviso('Cadastro de '+data.name+' salvo ✓ (enviado agora)', 'ok', 3500); }, function(){});
+        }
+      });
+    }
+  };
+  var _salvarCliente = $('#m-save').onclick;
+  $('#m-save').onclick = async function(){
+    try{ await _salvarCliente.apply(this, arguments); }
+    catch(e){ console.error('salvar cliente', e); customAlert('Não foi possível salvar o cadastro.\n\nMotivo: '+((e && (e.code || e.message)) || e)+'\n\nTire um print desta mensagem.'); }
   };
   openModal();
 }
@@ -7279,7 +7360,7 @@ function renderPortal(force){
         clientId: fbProfile.clientId, clientName: c.name || '', tipo: portalView.tipo, texto: texto,
         pointId: pt ? pt.id : null, pointName: pt ? pt.name : null,
         dataPreferida: ($('#pt-date') && $('#pt-date').value) || null,
-        status: 'nova', createdAt: new Date().toISOString(), criadoPor: (fbUser && fbUser.email) || ''
+        status: 'nova', createdAt: new Date().toISOString(), criadoPor: (fbProfile && fbProfile.nome ? fbProfile.nome + (fbProfile.telefone ? ' · '+fbProfile.telefone : '') : ((fbUser && fbUser.email) || ''))
       });
       window.PM_FB.toast('Pedido enviado para a P&M ✓', '', 3500);
       portalView.extrasTab = 'aguardando'; portalGo('extras');
@@ -8690,7 +8771,7 @@ function numModal(n){
     var tipo = $('#nm-tipo').value, numero = $('#nm-num').value.trim().replace(/\s+/g,' '), pr = numParse(numero);
     var cid = $('#nm-cli').value, c = cid ? state.clients.find(function(x){ return x.id===cid; }) : null;
     if(!pr.seq || !pr.ano){ $('#nm-msg').textContent = 'Número inválido. Use, por exemplo, CM 002/26 ou 036/26.'; return; }
-    if(isNew && state.numeracao.some(function(x){ return x.tipo===tipo && String(x.numero).replace(/\s+/g,'').toUpperCase()===numero.replace(/\s+/g,'').toUpperCase(); })){
+    if(isNew && state.numeracao.some(function(x){ if(x.tipo!==tipo) return false; var q = numParse(String(x.numero||'')); return Number(q.seq)===Number(pr.seq) && Number(q.ano)===Number(pr.ano); })){
       $('#nm-msg').textContent = 'Esse número já está registrado.'; return;
     }
     var data = { clientId: cid || null, clientName: c ? c.name : ((n && n.clientName) || ''), data: $('#nm-data').value || null,
@@ -8751,29 +8832,45 @@ function acessoSenha(){
 function acessoClientes(){
   return state.clients.filter(function(c){ return clientCategoryOf(c)==='manutencao' && isActiveClient(c); }).sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
 }
-function acessoDoCliente(c){ return state.usersCli.filter(function(u){ return u.clientId===c.id; })[0] || null; }
+function acessosDoCliente(c){ return state.usersCli.filter(function(u){ return u.clientId===c.id; }).sort(function(a,b){ return String(a.criadoEm||'').localeCompare(String(b.criadoEm||'')); }); }
+function acessoDoCliente(c){ return acessosDoCliente(c)[0] || null; }
+function acessoLoginTxt(u){ return u.loginTipo==='whatsapp' ? 'WhatsApp '+(u.telefone||'') : (u.email||''); }
 function acessoClientesHTML(){
   var cl = acessoClientes();
-  var html = '<div class="panel" style="margin-bottom:20px;"><div class="panel-head"><h2>Acessos da Área do Cliente</h2><span class="hint">Login e senha de cada cliente — a senha nunca fica guardada no app</span></div>';
-  html += '<div class="tablewrap"><table><thead><tr><th>Cliente</th><th>Login (e-mail)</th><th>Situação</th><th></th></tr></thead><tbody>'
+  var html = '<div class="panel" style="margin-bottom:20px;"><div class="panel-head"><h2>Acessos da Área do Cliente</h2><span class="hint">Um login para cada responsável — a senha nunca fica guardada no app</span></div>';
+  html += '<div class="tablewrap"><table><thead><tr><th>Cliente</th><th>Responsável · login</th><th>Situação</th><th></th></tr></thead><tbody>'
     + cl.map(function(c){
-      var u = acessoDoCliente(c);
-      var sit = !u ? '<span class="pill neutral">Sem acesso</span>' : (u.mustChangePassword ? '<span class="pill warn">Criado — aguardando o 1º acesso</span>' : '<span class="pill ok">Ativo</span>');
-      return '<tr><td><strong>'+esc(c.name)+'</strong>'+(c.contactName?'<div class="hint">'+esc(c.contactName)+'</div>':'')+'</td><td class="mono" style="font-size:12px;">'+(u ? esc(u.email||'') : '—')+'</td><td>'+sit+'</td>'
-        + '<td style="white-space:nowrap;">'+(u
-          ? '<button class="btn small ac-folha" data-id="'+c.id+'">Folha de boas-vindas</button> <button class="btn small ac-reset" data-id="'+c.id+'">Redefinir senha</button>'
-          : '<button class="btn small primary ac-criar" data-id="'+c.id+'">Criar acesso</button>')+'</td></tr>';
+      var us = acessosDoCliente(c);
+      var cab = '<td rowspan="'+Math.max(1, us.length)+'" style="vertical-align:top;"><strong>'+esc(c.name)+'</strong>'+(c.contactName?'<div class="hint">'+esc(c.contactName)+'</div>':'')
+        + '<div style="margin-top:6px;"><button class="btn small'+(us.length ? '' : ' primary')+' ac-criar" data-id="'+c.id+'">'+(us.length ? '+ Outro responsável' : 'Criar acesso')+'</button></div></td>';
+      if(!us.length) return '<tr>'+cab+'<td>—</td><td><span class="pill neutral">Sem acesso</span></td><td></td></tr>';
+      return us.map(function(u, i){
+        var sit = u.mustChangePassword ? '<span class="pill warn">Aguardando o 1º acesso</span>' : '<span class="pill ok">Ativo</span>';
+        return '<tr>'+(i===0 ? cab : '')+'<td><strong>'+esc(u.nome||'—')+'</strong><div class="hint mono">'+esc(acessoLoginTxt(u))+'</div></td><td>'+sit+'</td>'
+          + '<td style="white-space:nowrap;"><button class="btn small ac-folha" data-uid="'+esc(u.uid)+'">Folha de boas-vindas</button> <button class="btn small ac-reset" data-uid="'+esc(u.uid)+'">Redefinir senha</button> <button class="btn small danger ac-del" data-uid="'+esc(u.uid)+'">Remover</button></td></tr>';
+      }).join('');
     }).join('') + '</tbody></table></div></div>';
   return html;
 }
+function acessoPorUid(uid){ return state.usersCli.filter(function(u){ return u.uid===uid; })[0] || null; }
 function acessoWire(){
   $all('.ac-criar').forEach(function(b){ b.onclick = function(){ acessoCriarModal(state.clients.find(function(c){ return c.id===b.dataset.id; })); }; });
-  $all('.ac-folha').forEach(function(b){ b.onclick = function(){ var c = state.clients.find(function(x){ return x.id===b.dataset.id; }); acessoFolhaModal(c, acessoDoCliente(c), null); }; });
+  $all('.ac-folha').forEach(function(b){ b.onclick = function(){ var u = acessoPorUid(b.dataset.uid); if(!u) return; var c = state.clients.find(function(x){ return x.id===u.clientId; }); acessoFolhaModal(c, u, null); }; });
   $all('.ac-reset').forEach(function(b){ b.onclick = function(){
-    var c = state.clients.find(function(x){ return x.id===b.dataset.id; }), u = acessoDoCliente(c); if(!u) return;
-    var alias = /^pemsolucao\+/i.test(u.email||'');
-    customConfirm('Enviar e-mail para redefinir a senha de '+c.name+'?\n\nO link vai para '+u.email+(alias ? ' — que chega na caixa da P&M (pemsolucao@gmail.com). Abra o link, crie uma senha provisória e entregue ao cliente.' : '.'), function(){
-      PM_FB.auth.sendPasswordResetEmail(u.email).then(function(){ PM_FB.toast('E-mail de redefinição enviado ✓', '', 3500); }, function(e){ customAlert('Não foi possível enviar: '+(e && (e.code||e.message))); });
+    var u = acessoPorUid(b.dataset.uid); if(!u) return;
+    var alias = /^pemsolucao\+/i.test(u.email||'') || u.loginTipo==='whatsapp';
+    customConfirm('Enviar o link para redefinir a senha de '+(u.nome||'')+'?\n\n'+(alias ? 'O link chega na caixa da P&M (pemsolucao@gmail.com). Abra o link, crie uma senha provisória e mande para a pessoa pelo WhatsApp.' : 'O link vai para '+u.email+'.'), function(){
+      PM_FB.auth.sendPasswordResetEmail(u.email).then(function(){ PM_FB.toast('Link de redefinição enviado ✓', '', 3500); }, function(e){ customAlert('Não foi possível enviar: '+(e && (e.code||e.message))); });
+    });
+    if($('#modal-confirm-body')) $('#modal-confirm-body').style.whiteSpace = 'pre-line';
+  }; });
+  $all('.ac-del').forEach(function(b){ b.onclick = function(){
+    var u = acessoPorUid(b.dataset.uid); if(!u) return;
+    customConfirm('Remover o acesso de '+(u.nome||'')+' ('+acessoLoginTxt(u)+')?\n\nA pessoa deixa de entrar na Área do Cliente na hora. Os relatórios e pedidos do cliente não são apagados.\n\nSe um dia quiser liberar este mesmo número/e-mail de novo, exclua também o login em Firebase › Authentication.', function(){
+      db.collection('users').doc(u.uid).delete();
+      state.usersCli = state.usersCli.filter(function(x){ return x.uid!==u.uid; });
+      PM_FB.toast('Acesso removido ✓', '', 3000);
+      try{ render(); }catch(e){}
     });
     if($('#modal-confirm-body')) $('#modal-confirm-body').style.whiteSpace = 'pre-line';
   }; });
@@ -8789,36 +8886,55 @@ renderAcessos = function(){
 };
 function acessoCriarModal(c){
   if(!c) return;
-  var emailSug = (c.email && /@/.test(c.email)) ? c.email.trim() : 'pemsolucao+'+acessoSlug(c.name)+'@gmail.com';
+  var jaTem = acessosDoCliente(c), outro = jaTem.length > 0;
+  var emailSug = (!outro && c.email && /@/.test(c.email)) ? c.email.trim() : '';
   var senha = acessoSenha();
   $('#modal-title').textContent = 'Criar acesso — '+c.name;
   $('#modal-body').innerHTML =
-      '<div class="field"><label>E-mail de login</label><input type="email" id="ac-email" value="'+esc(emailSug)+'"></div>'
-    + '<div class="hint" style="margin:-4px 0 12px;line-height:1.5;">'+(c.email ? 'Usando o e-mail do cadastro do cliente: o "Esqueci minha senha" chega para ele.' : 'O cliente não tem e-mail no cadastro. Este endereço é um apelido do Gmail da P&amp;M: funciona como login, e o "Esqueci minha senha" chega na caixa da P&amp;M. Se ele tiver e-mail próprio, digite aqui.')+'</div>'
-    + '<div class="field"><label>Nome de quem vai usar</label><input type="text" id="ac-nome" value="'+esc(c.contactName || c.name || '')+'"></div>'
+      '<div class="field"><label>O cliente vai entrar com</label><div class="tl-seg" id="ac-tipo">'
+        + '<label data-v="whatsapp"><input type="radio" name="ac-tipo" value="whatsapp" checked> Número do WhatsApp</label>'
+        + '<label data-v="email"><input type="radio" name="ac-tipo" value="email"> E-mail</label></div></div>'
+    + (outro ? '<div class="hint" style="margin:-4px 0 10px;">Já tem acesso: '+jaTem.map(function(u){ return esc((u.nome||'')+' ('+acessoLoginTxt(u)+')'); }).join(', ')+'. Este será mais um responsável, com login e senha próprios.</div>' : '')
+    + '<div class="field" id="ac-wa-wrap"><label>Número do WhatsApp (com DDD)</label><input type="tel" id="ac-wa" value="'+esc(outro ? '' : (c.phone||''))+'" placeholder="(22) 99999-9999"></div>'
+    + '<div class="field" id="ac-email-wrap" style="display:none;"><label>E-mail do cliente</label><input type="email" id="ac-email" value="'+esc(emailSug)+'" placeholder="email@exemplo.com"></div>'
+    + '<div class="hint" id="ac-tipo-hint" style="margin:-4px 0 12px;line-height:1.5;"></div>'
+    + '<div class="field"><label>Nome de quem vai usar</label><input type="text" id="ac-nome" value="'+esc(outro ? '' : (c.contactName || c.name || ''))+'" placeholder="Nome do responsável"></div>'
     + '<div class="field"><label>Senha provisória</label><div style="display:flex;gap:8px;"><input type="text" id="ac-senha" value="'+senha+'" readonly style="font-family:monospace;font-size:16px;letter-spacing:.06em;"><button type="button" class="btn small" id="ac-outra">Gerar outra</button></div></div>'
     + '<div class="hint" style="line-height:1.5;">A senha provisória aparece só agora e vai impressa na folha de boas-vindas. Ela não fica guardada no app. No primeiro acesso, o cliente é obrigado a criar a senha dele.</div>'
     + '<div class="hint" id="ac-msg" style="color:var(--danger,#b91c1c);margin-top:8px;"></div>';
   $('#modal-foot').innerHTML = '<button class="btn" id="ac-cancel">Cancelar</button><button class="btn primary" id="ac-ok">Criar acesso</button>';
   $('#ac-outra').onclick = function(){ $('#ac-senha').value = acessoSenha(); };
+  function tipoSync(){
+    var t = (document.querySelector('input[name="ac-tipo"]:checked')||{}).value;
+    $('#ac-wa-wrap').style.display = t==='whatsapp' ? '' : 'none'; $('#ac-email-wrap').style.display = t==='email' ? '' : 'none';
+    $all('#ac-tipo label').forEach(function(l){ l.classList.toggle('on', l.dataset.v===t); });
+    $('#ac-tipo-hint').innerHTML = t==='whatsapp' ? 'O cliente entra digitando o próprio número e a senha. Se esquecer a senha, o pedido chega para a P&amp;M e você manda uma senha nova pelo WhatsApp.'
+      : 'O cliente entra com o e-mail e a senha. Se esquecer, o link de nova senha chega no e-mail dele.';
+  }
+  $all('input[name="ac-tipo"]').forEach(function(r){ r.onchange = tipoSync; }); tipoSync();
   $('#ac-cancel').onclick = closeModal;
   $('#ac-ok').onclick = async function(){
-    var email = $('#ac-email').value.trim().toLowerCase(), nome = $('#ac-nome').value.trim(), pass = $('#ac-senha').value, btn = this;
-    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ $('#ac-msg').textContent = 'E-mail inválido.'; return; }
+    var tipo = (document.querySelector('input[name="ac-tipo"]:checked')||{}).value, nome = $('#ac-nome').value.trim(), pass = $('#ac-senha').value, btn = this;
+    var email = tipo==='whatsapp' ? PM_FB.loginParaEmail($('#ac-wa').value) : $('#ac-email').value.trim().toLowerCase();
+    var tel = $('#ac-wa').value.trim();
+    if(!nome){ $('#ac-msg').textContent = 'Informe o nome de quem vai usar este acesso.'; return; }
+    if(tipo==='whatsapp' && !email){ $('#ac-msg').textContent = 'Número do WhatsApp inválido. Use DDD + número, ex.: (22) 99999-9999.'; return; }
+    if(tipo==='email' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ $('#ac-msg').textContent = 'E-mail inválido.'; return; }
     btn.disabled = true; btn.textContent = 'Criando…';
     var app2 = null;
     try{
       try{ app2 = firebase.app('pm-acesso'); }catch(e){ app2 = firebase.initializeApp(PM_FB.config, 'pm-acesso'); }
       var cred = await app2.auth().createUserWithEmailAndPassword(email, pass);
       var uid = cred.user.uid;
-      await db.collection('users').doc(uid).set({ role:'cliente', nome: nome, clientId: c.id, email: email, mustChangePassword: true, criadoEm: new Date().toISOString() });
+      var udoc = { role:'cliente', nome: nome, clientId: c.id, email: email, loginTipo: tipo, telefone: tipo==='whatsapp' ? tel : '', mustChangePassword: true, criadoEm: new Date().toISOString() };
+      await db.collection('users').doc(uid).set(udoc);
       try{ await app2.auth().signOut(); }catch(e){}
-      state.usersCli.push({ uid: uid, role:'cliente', nome: nome, clientId: c.id, email: email, mustChangePassword: true });
-      acessoFolhaModal(c, { email: email, nome: nome }, pass);
+      state.usersCli.push(Object.assign({ uid: uid }, udoc));
+      acessoFolhaModal(c, udoc, pass);
     }catch(e){
       btn.disabled = false; btn.textContent = 'Criar acesso';
       var code = e && e.code;
-      $('#ac-msg').textContent = code==='auth/email-already-in-use' ? 'Esse e-mail já tem login. Use outro e-mail (ou fale comigo para ligar o login existente a este cliente).'
+      $('#ac-msg').textContent = code==='auth/email-already-in-use' ? 'Esse '+(tipo==='whatsapp' ? 'número' : 'e-mail')+' já tem login (pode ser de um acesso removido). Para reaproveitar: Firebase › Authentication › procure '+email+' › Excluir usuário, e crie de novo aqui.'
         : code==='auth/weak-password' ? 'Senha fraca — gere outra.' : 'Não foi possível criar: '+(code || (e && e.message) || e);
       try{ if(app2) await app2.auth().signOut(); }catch(x){}
     }
@@ -8828,6 +8944,7 @@ function acessoCriarModal(c){
 function acessoFolhaHTML(c, u, senha){
   var box = 'border:1px solid #C9D7E8;border-radius:10px;padding:12px 14px;';
   var real = u && u.email && !/^pemsolucao\+/i.test(u.email);
+  var porWa = u && u.loginTipo==='whatsapp';
   return docWatermarkHTML() + companyHeaderHTML()
     + '<div style="background:#EEF4FB;border-left:5px solid #1B5FA8;border-radius:6px;padding:12px 16px;margin:4px 0 14px;">'
       + '<div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#1B5FA8;font-weight:800;">Novidade P&amp;M</div>'
@@ -8835,12 +8952,12 @@ function acessoFolhaHTML(c, u, senha){
       + '<div style="font-size:12.5px;color:#334155;">'+esc(c.name)+(u && u.nome && u.nome!==c.name ? ' · '+esc(u.nome) : '')+'</div></div>'
     + '<table style="width:100%;border-collapse:collapse;"><tr><td style="vertical-align:top;padding-right:14px;">'
       + '<div style="'+box+'margin-bottom:10px;"><div style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#5B6B7E;font-weight:700;">Endereço do aplicativo</div><div style="font-size:14px;font-weight:700;color:#123F73;word-break:break-all;">'+APP_URL.replace('https://','')+'</div></div>'
-      + '<div style="'+box+'margin-bottom:10px;"><div style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#5B6B7E;font-weight:700;">Seu login (e-mail)</div><div style="font-size:14px;font-weight:700;color:#123F73;word-break:break-all;">'+esc((u && u.email) || '')+'</div></div>'
+      + '<div style="'+box+'margin-bottom:10px;"><div style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#5B6B7E;font-weight:700;">'+(porWa ? 'Seu login (o seu WhatsApp)' : 'Seu login (e-mail)')+'</div><div style="font-size:'+(porWa?'17':'14')+'px;font-weight:700;color:#123F73;word-break:break-all;">'+esc(porWa ? (u.telefone||'') : ((u && u.email) || ''))+'</div></div>'
       + '<div style="'+box+'"><div style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#5B6B7E;font-weight:700;">Senha provisória</div><div style="font-size:18px;font-weight:800;color:#123F73;font-family:monospace;letter-spacing:.08em;">'+(senha ? esc(senha) : '________________')+'</div>'
         + '<div style="font-size:11px;color:#5B6B7E;">'+(senha ? 'Válida só para o primeiro acesso.' : 'Anote aqui a senha entregue pela P&amp;M.')+'</div></div>'
     + '</td><td style="width:170px;text-align:center;vertical-align:top;"><img src="'+APP_QR_URI+'" alt="QR Code do aplicativo" style="width:160px;height:160px;"><div style="font-size:11px;color:#5B6B7E;">Aponte a câmera do celular</div></td></tr></table>'
     + '<p style="margin:16px 0 6px;font-weight:800;color:#123F73;">1. Primeiro acesso</p>'
-    + '<ol style="margin:0 0 0 18px;padding:0;line-height:1.55;"><li>Aponte a câmera do celular para o QR Code (ou digite o endereço no navegador).</li><li>Entre com o seu e-mail e a senha provisória.</li><li>O aplicativo vai pedir para você criar a sua senha (mínimo de 6 caracteres). Guarde-a com cuidado.</li></ol>'
+    + '<ol style="margin:0 0 0 18px;padding:0;line-height:1.55;"><li>Aponte a câmera do celular para o QR Code (ou digite o endereço no navegador).</li><li>Entre com '+(porWa ? 'o seu número do WhatsApp (com DDD)' : 'o seu e-mail')+' e a senha provisória.</li><li>O aplicativo vai pedir para você criar a sua senha (mínimo de 6 caracteres). Guarde-a com cuidado.</li></ol>'
     + '<p style="margin:14px 0 6px;font-weight:800;color:#123F73;">2. Deixe o aplicativo na tela do celular</p>'
     + '<table style="width:100%;border-collapse:collapse;font-size:12.5px;"><tr>'
       + '<td style="'+box+'vertical-align:top;width:50%;"><strong>Android (Chrome)</strong><br>Toque no menu <strong>⋮</strong> (canto superior direito) e escolha <strong>"Instalar app"</strong> ou <strong>"Adicionar à tela inicial"</strong>.</td>'
@@ -8850,14 +8967,25 @@ function acessoFolhaHTML(c, u, senha){
     + '<p style="margin:0;line-height:1.55;">Dentro do aplicativo, toque em <strong>"Trocar senha"</strong>, no topo da tela. '+(real ? 'Se esquecer a senha, use <strong>"Esqueci minha senha"</strong> na tela de entrada: o link chega no seu e-mail.' : 'Se esquecer a senha, fale com a P&amp;M pelo WhatsApp que enviamos uma nova.')+'</p>'
     + '<p style="margin:14px 0 6px;font-weight:800;color:#123F73;">O que você encontra na Área do Cliente</p>'
     + '<p style="margin:0;line-height:1.55;">Relatórios de cada visita · Laudos de análise do laboratório · Qualidade da água (cloro, pH e temperatura) · Seu contrato e revisões · Pedido de visita extra e aviso de ocorrências · WhatsApp direto com a P&amp;M</p>'
+    + '<div style="margin-top:12px;border:1px solid #E7C77A;background:#FFF8E6;border-radius:8px;padding:9px 12px;font-size:11.5px;line-height:1.5;color:#5A4410;"><strong>Acesso pessoal e intransferível.</strong> Este login é só seu — não compartilhe a senha. Se outra pessoa precisar de acesso, ou se um responsável sair, o contratante deve solicitar à P&amp;M por escrito (WhatsApp ou e-mail).</div>'
     + docFooterHTML();
 }
 function acessoFolhaModal(c, u, senha){
   $('#modal-title').textContent = senha ? 'Acesso criado ✓' : 'Folha de boas-vindas';
   $('#modal-body').innerHTML = (senha ? '<div class="rj-banner ok" style="margin-bottom:12px;line-height:1.5;"><span>Acesso de <strong>'+esc(c.name)+'</strong> criado. <strong>Salve ou imprima a folha agora</strong>: a senha provisória não fica guardada e não aparece de novo.</span></div>' : '<div class="hint" style="margin-bottom:12px;">Sem a senha provisória (ela não fica guardada). Se o cliente perdeu a senha, use "Redefinir senha".</div>')
     + '<div id="ac-folha" class="doc-page print-doc doc-compact" style="max-width:800px;">'+acessoFolhaHTML(c, u, senha)+'</div>';
-  $('#modal-foot').innerHTML = '<span class="hint" id="ac-hint"></span><button class="btn" id="ac-fechar">Fechar</button><button class="btn primary" id="ac-pdf">Salvar PDF</button>';
-  $('#ac-fechar').onclick = function(){ if(senha){ customConfirm('Já salvou ou imprimiu a folha? A senha provisória não aparece de novo.', closeModal); } else closeModal(); };
+  $('#modal-foot').innerHTML = '<span class="hint" id="ac-hint"></span><button class="btn" id="ac-fechar">Fechar</button><button class="btn" id="ac-wa-send">Enviar pelo WhatsApp</button><button class="btn primary" id="ac-pdf">Salvar PDF</button>';
+  $('#ac-wa-send').onclick = async function(){
+    var b = this; b.disabled = true; b.textContent = 'Preparando…';
+    try{
+      var blob = await buildPaginatedPdfBlob($('#ac-folha'));
+      await compartilharPdfWhatsApp(blob, 'Area_do_Cliente_'+acessoSlug(c.name)+'.pdf', (u && u.telefone) || c.phone,
+        'Olá! Seja bem-vindo à Área do Cliente da P&M Soluções em Água. Segue o passo a passo para acessar o aplicativo.');
+    }catch(e){ customAlert('Não foi possível gerar o PDF: '+(e && e.message || e)); }
+    b.disabled = false; b.textContent = 'Enviar pelo WhatsApp';
+  };
+  var acFechar = function(){ closeModal(); if(currentTab==='acessos'){ try{ render(); }catch(e){} } };
+  $('#ac-fechar').onclick = function(){ if(senha){ customConfirm('Já salvou ou imprimiu a folha? A senha provisória não aparece de novo.', acFechar); } else acFechar(); };
   $('#ac-pdf').onclick = function(){ exportElementAsPDF($('#ac-folha'), 'Area_do_Cliente_'+acessoSlug(c.name), $('#ac-hint')); };
   if(!$('#modal').open) openModal();
 }
