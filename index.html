@@ -846,7 +846,7 @@ button.pt-card{cursor:pointer;}
     <button class="navbtn" data-tab="pacotes"><span class="ico">04</span>Pacotes</button>
     <button class="navbtn" data-tab="valores"><span class="ico">05</span>Valores</button>
     <button class="navbtn" data-tab="materiais"><span class="ico">06</span>Materiais</button>
-    <button class="navbtn" data-tab="propostas"><span class="ico">07</span>Propostas e contratos</button>
+    <button class="navbtn" data-tab="propostas"><span class="ico">07</span>Propostas</button>
     <button class="navbtn" data-tab="numeracao"><span class="ico">№</span>Numeração</button>
     <button class="navbtn" data-tab="equipe"><span class="ico">08</span>Equipe</button>
     <button class="navbtn" data-tab="financeiro"><span class="ico">09</span>Financeiro</button>
@@ -1734,6 +1734,9 @@ function subscribe(colName, arr){
       if(colName==='generatedProposals' && typeof onGeneratedProposalsUpdated==='function') onGeneratedProposalsUpdated();
       return;
     }
+    // Tela de gerar proposta/contrato aberta: não redesenha (apagaria o que está sendo preenchido
+    // e o documento recém-gerado). As listas dela se atualizam pelos próprios ganchos.
+    if(ppFormAtivo()){ if(colName==='packages' && typeof onPackagesUpdated==='function') onPackagesUpdated(); return; }
     try{ render(); }catch(e){ if(colName==='packages') pkgDebug.lastError = 'erro no render() após snapshot de packages: '+(e&&e.message?e.message:e); }
     if(colName==='packages' && typeof onPackagesUpdated==='function') onPackagesUpdated();
   }, function(err){
@@ -1886,7 +1889,7 @@ var TAB_META = {
   clientes:{title:'Clientes', sub:'Cadastro, sistemas instalados e tipo de contrato'},
   valores:{title:'Valores', sub:'Tabela de preços de referência das visitas de manutenção'},
   panorama:{title:'Panorama financeiro', sub:'Saúde da empresa: faturado, despesas, sobra e caixinhas'},
-  propostas:{title:'Propostas e contratos', sub:'Gere contratos de manutenção e propostas de instalação a partir do cadastro do cliente'},
+  propostas:{title:'Propostas de instalação', sub:'Gere propostas de instalação para clientes cadastrados ou novos'},
   equipe:{title:'Equipe', sub:'Escala de trabalho do colaborador e insumos de compra recorrente'},
   manutencoes:{title:'Manutenções', sub:'Relatório de cada visita, histórico por cliente e relatório técnico em PDF'},
   instalacoes:{title:'Instalações', sub:'Instalações de sistema programadas para clientes em implantação'},
@@ -3884,15 +3887,17 @@ function buildImplantacaoProposalHTML(client, params, materiais){
   return html;
 }
 function propostasHistoricoHTML(filter){
-  var list = state.generatedProposals.slice().sort(function(a,b){ return (b.createdAt||'').localeCompare(a.createdAt||''); });
+  var tipoTela = ppDocMode==='contrato' ? 'manutencao' : 'implantacao';
+  var list = state.generatedProposals.filter(function(p){ return (p.type||'implantacao')===tipoTela; }).sort(function(a,b){ return (b.createdAt||'').localeCompare(a.createdAt||''); });
+  var totalTela = list.length;
   if(filter){
     var f = filter.toLowerCase();
     list = list.filter(function(p){ return (p.clientName||'').toLowerCase().indexOf(f)>-1 || (p.number||'').toLowerCase().indexOf(f)>-1; });
   }
-  var html = '<div class="panel" id="pp-historico-panel" style="margin-top:20px;"><div class="panel-head"><h2>Propostas geradas ('+state.generatedProposals.length+')</h2></div>'
+  var html = '<div class="panel" id="pp-historico-panel" style="margin-top:20px;"><div class="panel-head"><h2>'+(ppDocMode==='contrato' ? 'Contratos gerados' : 'Propostas geradas')+' ('+totalTela+')</h2></div>'
     + '<div style="padding:14px 18px;"><input type="text" id="pp-hist-search" placeholder="Buscar por cliente ou número..." style="width:100%;max-width:360px;" value="'+esc(filter||'')+'"></div>';
   if(list.length===0){
-    html += '<div class="empty">'+(filter?'Nenhuma proposta encontrada para esta busca.':'Nenhuma proposta gerada ainda.')+'</div></div>';
+    html += '<div class="empty">'+(filter?'Nada encontrado para esta busca.':(ppDocMode==='contrato' ? 'Nenhum contrato gerado ainda.' : 'Nenhuma proposta gerada ainda.'))+'</div></div>';
     return html;
   }
   html += '<div class="tablewrap"><table><thead><tr><th>N°</th><th>Cliente</th><th>Tipo</th><th>Data</th><th></th></tr></thead><tbody>'
@@ -3936,21 +3941,62 @@ function wireHistorico(filterVal){
     });
   });
 }
-function renderPropostas(){
+// A aba Propostas gera só PROPOSTAS DE INSTALAÇÃO; o CONTRATO DE MANUTENÇÃO é gerado na aba
+// Contratos (renderPropostas('contrato')). Os dois podem usar um cliente já cadastrado ou um
+// cliente novo, digitado na hora (o app cria o cadastro junto).
+var ppDocMode = 'proposta';
+function ppFormAtivo(){ return !!document.getElementById('pp-generate') && (currentTab==='propostas' || currentTab==='contratos'); }
+function ppNovoClienteHTML(){
+  var f = function(id, lbl, ph){ return '<div class="field"><label>'+lbl+'</label><input type="text" id="'+id+'" placeholder="'+(ph||'')+'"></div>'; };
+  return '<div id="pp-novo" style="display:none;border:1px dashed var(--line,#cbd5e1);border-radius:12px;padding:14px 16px;margin-bottom:14px;">'
+    + '<div class="hint" style="margin-bottom:10px;">Cliente novo: preencha os dados abaixo. Ao gerar, o app já cria o cadastro dele em Clientes'
+      + (ppDocMode==='contrato' ? ' (manutenção mensal, ativo).' : ' (na lista "Propostas enviadas").')+'</div>'
+    + f('pn-nome', 'Nome / Razão social *')
+    + '<div class="grid2">'+f('pn-doc', 'CPF / CNPJ', '000.000.000-00')+f('pn-contato', 'Contato (responsável)')+'</div>'
+    + '<div class="grid2">'+f('pn-fone', 'Telefone / WhatsApp')+f('pn-email', 'E-mail')+'</div>'
+    + '<div class="grid2">'+f('pn-rua', 'Rua / Av. e número')+f('pn-bairro', 'Bairro')+'</div>'
+    + '<div class="grid2">'+f('pn-cidade', 'Município', 'Nova Friburgo')+f('pn-cep', 'CEP', '00000-000')+'</div>'
+    + '</div>';
+}
+async function ppCriarClienteNovo(){
+  var g = function(id){ var el = $('#'+id); return el ? el.value.trim() : ''; };
+  var nome = g('pn-nome');
+  if(!nome) return null;
+  var isC = ppDocMode==='contrato';
+  var data = { name: nome, cpfCnpj: g('pn-doc'), contactName: g('pn-contato'), phone: g('pn-fone'), email: g('pn-email'),
+    addressStreet: g('pn-rua'), addressNeighborhood: g('pn-bairro'), addressCity: g('pn-cidade') || 'Nova Friburgo', addressState: 'RJ', addressZip: g('pn-cep'),
+    clientCategory: isC ? 'manutencao' : 'instalacao', status: isC ? 'Ativo' : 'Proposta enviada',
+    systems: [], packageIds: [], looseParamsSelected: [], points: [], createdAt: new Date().toISOString() };
+  if(isC){
+    data.visitsPerMonth = Number(($('#pp-visits')||{}).value)||1;
+    var v = parseMoneyBR(($('#pp-valor')||{}).value);
+    if(v!=null){ data.monthlyValue = v; data.monthlyValueRef = String(($('#pp-date')||{}).value || todayISO()).slice(0,7); }
+    data.contractStart = ($('#pp-date')||{}).value || null;
+  }
+  var id = await createDoc('clients', data);
+  data.id = id;
+  if(!state.clients.some(function(x){ return x.id===id; })) state.clients.push(data);
+  return data;
+}
+function renderPropostas(modo){
+  ppDocMode = modo==='contrato' ? 'contrato' : 'proposta';
+  var isContrato = ppDocMode==='contrato';
   var clientsSorted = state.clients.slice().sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
+  if(isContrato) clientsSorted = clientsSorted.filter(function(c){ return clientCategoryOf(c)!=='instalacao' || c.status==='Ativo'; });
   var nextNum = nextProposalNumberPreview();
-  var html = '<div class="panel"><div class="panel-head"><h2>Gerar proposta</h2></div>'
+  var html = '<div class="panel"><div class="panel-head"><h2>'+(isContrato ? 'Gerar contrato de manutenção' : 'Gerar proposta de instalação')+'</h2></div>'
     + '<div style="padding:20px 22px;">'
-    + (clientsSorted.length===0 ? '<div class="hint" style="margin-bottom:14px;">Nenhum cliente cadastrado ainda — cadastre em Clientes antes de gerar uma proposta.</div>' : '')
     + '<div class="grid2">'
       + '<div class="field"><label>Cliente</label><select id="pp-client"><option value="">Selecione um cliente</option>'
+        + '<option value="__novo__">+ Cliente novo (preencher os dados agora)</option>'
         + clientsSorted.map(function(c){ return '<option value="'+c.id+'">'+esc(c.name)+'</option>'; }).join('')
         + '</select></div>'
-      + '<div class="field"><label>Documento</label><select id="pp-type">'
-        + '<option value="manutencao">Contrato de manutenção</option>'
-        + '<option value="implantacao">Proposta de instalação</option>'
+      + '<div class="field" style="display:none;"><label>Documento</label><select id="pp-type">'
+        + '<option value="manutencao" '+(isContrato?'selected':'')+'>Contrato de manutenção</option>'
+        + '<option value="implantacao" '+(isContrato?'':'selected')+'>Proposta de instalação</option>'
         + '</select></div>'
     + '</div>'
+    + ppNovoClienteHTML()
     + '<div class="grid2">'
       + '<div class="field"><label id="pp-number-label">N° da proposta</label><input type="text" id="pp-number" value="'+esc(nextNum)+'" readonly style="background:#f0f0f0;color:#555;">'
         + '<div class="hint" style="margin-top:4px;" id="pp-number-hint">Gerado automaticamente — veja todos os números na aba Numeração.</div></div>'
@@ -3977,6 +4023,7 @@ function renderPropostas(){
         + '<span class="hint" id="pp-pdf-hint"></span>'
         + '<button class="btn" id="pp-print-only" style="display:none;">Imprimir</button>'
         + '<button class="btn primary" id="pp-save-pdf" style="display:none;">Salvar PDF</button>'
+        + '<button class="btn" id="pp-attach" style="display:none;">Guardar no cadastro do cliente</button>'
       + '</div>'
       + '<div id="proposal-print-area" class="doc-page print-doc" style="display:none;" contenteditable="true"></div>'
     + '</div>';
@@ -4026,6 +4073,7 @@ function renderPropostas(){
     visitsWrap.style.display = isManut ? 'block' : 'none';
     manutTermsWrap.style.display = isManut ? 'grid' : 'none';
     var title = $('#pp-materials-title'), hint = $('#pp-materials-hint');
+    ['#pp-materials-title','#pp-materials-hint','#pp-materials-list','#pp-materials-total'].forEach(function(sel){ var el = $(sel); if(el) el.style.display = isManut ? 'none' : ''; });
     if(isManut){
       if(title) title.textContent = 'Materiais previstos (opcional)';
       if(hint) hint.textContent = 'Marque os materiais que serão empregados neste serviço e informe a quantidade — os valores entram automaticamente no documento gerado.';
@@ -4038,10 +4086,8 @@ function renderPropostas(){
   }
   function syncFromClient(){
     var c = state.clients.find(function(x){ return x.id===clientSel.value; });
-    if(c){
-      typeSel.value = clientCategoryOf(c)==='manutencao' ? 'manutencao' : 'implantacao';
-      if(c.visitsPerMonth) visitsSel.value = String(c.visitsPerMonth);
-    }
+    $('#pp-novo').style.display = clientSel.value==='__novo__' ? 'block' : 'none';
+    if(c && c.visitsPerMonth) visitsSel.value = String(c.visitsPerMonth);
     syncTypeFields();
   }
   clientSel.addEventListener('change', syncFromClient);
@@ -4097,6 +4143,15 @@ function renderPropostas(){
   $('#pp-generate').addEventListener('click', async function(){
     var c = state.clients.find(function(x){ return x.id===clientSel.value; });
     var hint = $('#pp-hint');
+    if(clientSel.value==='__novo__'){
+      if(!$('#pn-nome').value.trim()){ hint.textContent = 'Informe o nome do cliente novo.'; $('#pn-nome').focus(); return; }
+      if(typeSel.value==='implantacao' && selectedMaterialsList().length===0){ hint.textContent = 'Selecione ao menos um material (incluindo sua mão de obra) antes de gerar — é o que compõe o valor total da proposta.'; return; }
+      if(typeSel.value==='manutencao' && parseMoneyBR(($('#pp-valor')||{}).value)==null){ hint.textContent = 'Informe o valor mensal do contrato.'; return; }
+      c = await ppCriarClienteNovo();
+      if(!c){ hint.textContent = 'Não foi possível criar o cadastro do cliente.'; return; }
+      var opt = document.createElement('option'); opt.value = c.id; opt.textContent = c.name; clientSel.appendChild(opt); clientSel.value = c.id;
+      $('#pp-novo').style.display = 'none';
+    }
     if(!c){ hint.textContent = 'Selecione um cliente antes de gerar.'; return; }
     var area = $('#proposal-print-area'), printOnlyBtn = $('#pp-print-only'), savePdfBtn = $('#pp-save-pdf');
     var materiais = selectedMaterialsList();
@@ -4117,6 +4172,7 @@ function renderPropostas(){
       printOnlyBtn.style.display = 'inline-flex';
       savePdfBtn.style.display = 'inline-flex';
       area.dataset.docKind = 'proposta';
+      if($('#pp-attach')) $('#pp-attach').style.display = 'none';
       await consumeProposalNumber();
       numRegistrar({ tipo:'proposta', prefixo:'', seq: Number(String(number).split('/')[0])||null, ano: String(number).split('/')[1]||'', numero: number, clientId: c.id, clientName: c.name||'', data: dateVal });
       await saveGeneratedProposal(c, 'implantacao', number, dateVal, docHtmlI, { params: paramsI, materiais: materiais });
@@ -4157,6 +4213,8 @@ function renderPropostas(){
     printOnlyBtn.style.display = 'inline-flex';
     savePdfBtn.style.display = 'inline-flex';
     area.dataset.docKind = 'contrato';
+    area.dataset.docClientId = c.id; area.dataset.docDate = dateVal; area.dataset.docValor = String(params.custoMensal);
+    if($('#pp-attach') && typeof fbAssets!=='undefined'){ $('#pp-attach').style.display = 'inline-flex'; $('#pp-attach').disabled = false; $('#pp-attach').textContent = 'Guardar no cadastro do cliente'; }
     numRegistrar({ tipo:'contrato', prefixo:'CM', seq: numC.seq, ano: numC.ano, numero: number, clientId: c.id, clientName: c.name||'', data: dateVal, valorMensal: params.custoMensal });
     state.numeracao.push({ tipo:'contrato', prefixo:'CM', seq: numC.seq, ano: numC.ano, numero: number }); // evita repetir antes do retorno do banco
     await saveGeneratedProposal(c, 'manutencao', number, dateVal, docHtmlM, { params: params, materiais: materiais });
@@ -4166,6 +4224,22 @@ function renderPropostas(){
     var area = $('#proposal-print-area');
     var filenameBase = (area.dataset.docKind==='contrato'?'Contrato_':'Proposta_')+(area.dataset.docNumber||'')+'_'+(area.dataset.docClient||'cliente');
     printElement(area, filenameBase, $('#pp-pdf-hint'));
+  });
+  if($('#pp-attach')) $('#pp-attach').addEventListener('click', async function(){
+    var area = $('#proposal-print-area'), btn = this, hintEl = $('#pp-pdf-hint');
+    if(!area.dataset.docClientId) return;
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    try{
+      var blob = await buildPaginatedPdfBlob(area);
+      var nome = 'Contrato_'+String(area.dataset.docNumber||'').replace(/[^0-9A-Za-z]+/g,'-')+'.pdf';
+      var file = new File([blob], nome, { type: 'application/pdf' });
+      var up = await fbAssets.upload(file, { clientId: area.dataset.docClientId });
+      await createDoc('contratos', { clientId: area.dataset.docClientId, tipo: 'contrato', titulo: 'Contrato de manutenção Nº '+(area.dataset.docNumber||''),
+        vigencia: area.dataset.docDate || todayISO(), valorMensal: Number(area.dataset.docValor)||null, descricao: '', publicado: false,
+        assetId: up.id, fileName: nome, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+      btn.textContent = 'Guardado ✓';
+      if(window.PM_FB && PM_FB.toast) PM_FB.toast('Contrato guardado no cadastro (aba Contratos). Ainda não aparece para o cliente.', '', 4500);
+    }catch(e){ btn.disabled = false; btn.textContent = 'Guardar no cadastro do cliente'; customAlert('Não foi possível guardar: '+(e && e.message || e)); }
   });
   $('#pp-save-pdf').addEventListener('click', function(){
     var area = $('#proposal-print-area');
@@ -7488,9 +7562,25 @@ function ctrSorted(list){ return list.slice().sort(function(a,b){ return (b.vige
 function ctrVigente(list){ return ctrSorted(list).filter(function(d){ return d.tipo==='contrato' || d.tipo==='renovacao'; })[0] || null; }
 function ctrValorAtual(list){ var today = localISO(); return ctrSorted(list).filter(function(d){ return d.valorMensal!=null && (d.vigencia||'') <= today; })[0] || null; }
 
+var ctrMode = 'lista'; // 'lista' | 'gerar'
+function ctrToggleHTML(){
+  return '<div class="campo-toggle" role="group" aria-label="Contratos" style="margin-bottom:16px;max-width:520px;">'
+    + '<button type="button" class="ctr-mode" data-mode="lista" aria-pressed="'+(ctrMode==='lista')+'">Contratos por cliente</button>'
+    + '<button type="button" class="ctr-mode" data-mode="gerar" aria-pressed="'+(ctrMode==='gerar')+'">Gerar contrato</button></div>';
+}
+function ctrWireToggle(){ $all('.ctr-mode').forEach(function(b){ b.onclick = function(){ ctrMode = b.dataset.mode; renderContratos(); window.scrollTo(0,0); }; }); }
 function renderContratos(){
   var actions = $('#page-actions');
-  if(actions){ actions.innerHTML = '<button class="btn primary" id="btn-new-ctr">+ Novo documento</button>'; $('#btn-new-ctr').onclick = function(){ openContratoModal(null, ctrClientFilter); }; }
+  if(ctrMode==='gerar'){
+    if(actions) actions.innerHTML = '';
+    renderPropostas('contrato');
+    $('#view').insertAdjacentHTML('afterbegin', ctrToggleHTML());
+    ctrWireToggle();
+    return;
+  }
+  if(actions){ actions.innerHTML = '<button class="btn" id="btn-new-ctr">+ Anexar documento</button> <button class="btn primary" id="btn-gen-ctr">+ Gerar contrato</button>';
+    $('#btn-new-ctr').onclick = function(){ openContratoModal(null, ctrClientFilter); };
+    $('#btn-gen-ctr').onclick = function(){ ctrMode = 'gerar'; renderContratos(); }; }
   var clients = state.clients.filter(function(c){ return clientCategoryOf(c)==='manutencao' || state.contratos.some(function(d){ return d.clientId===c.id; }); })
     .sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
   var html = '<div class="panel"><div class="panel-head" style="flex-wrap:wrap;gap:10px;"><h2>Contratos por cliente</h2>'
@@ -7516,7 +7606,8 @@ function renderContratos(){
     html += '</div>';
   });
   html += '</div>';
-  $('#view').innerHTML = html;
+  $('#view').innerHTML = ctrToggleHTML() + html;
+  ctrWireToggle();
   $('#ctr-filter').onchange = function(){ ctrClientFilter = this.value; renderContratos(); };
   $all('.ctr-add').forEach(function(b){ b.onclick = function(){ openContratoModal(null, b.dataset.client); }; });
   $all('.ctr-edit').forEach(function(b){ b.onclick = function(){ openContratoModal(b.dataset.id); }; });
