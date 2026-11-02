@@ -858,7 +858,7 @@ button.pt-card{cursor:pointer;}
     <!-- Demais abas (Manutenções, Análises, Orçamentos) temporariamente
          removidas da navegação a pedido do usuário, para isolar o problema de conexão com o banco.
          O código continua abaixo, intacto, para religarmos assim que resolvido. -->
-    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 01/11 23:49</span></div>
+    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 02/11 00:26</span></div>
   </nav>
   <main id="main">
     <div id="topbar">
@@ -3080,6 +3080,18 @@ function cartaRevisaoInfo(c, novo){
   }
   return { k: k, numero: k.numero, rev: rev, revTxt: String(rev).padStart(2,'0'), itens: itens, jaRegistrada: !!ja, renumerou: !!(k.numeroAnterior && !k.renumeracaoRegistrada) };
 }
+function proximoReajuste(){ return futureReajustes()[0] || null; }
+// Parâmetros para gerar o contrato de um cliente que JÁ tem contrato: mesmo número, revisão nova,
+// histórico de revisões completo e as cláusulas próprias dele (guardadas na aba Numeração).
+function contratoRevisaoParams(c){
+  var k = contratoDoCliente(c); if(!k) return null;
+  var novo = proximoReajuste(), ri = novo ? cartaRevisaoInfo(c, novo) : null;
+  var rows = (k.revisoes||[]).map(function(r){ return { rev: r.rev, data: r.data, itens: r.itens||[], motivo: r.motivo||'' }; });
+  if(ri && !ri.jaRegistrada) rows.push({ rev: ri.revTxt, data: novo.effectiveFrom+'-01', itens: ri.itens, motivo: 'Reajuste anual'+(ri.renumerou ? ' e renumeração' : '') });
+  return { k: k, novo: novo, numero: k.numero, revisao: ri ? ri.rev : (Number(k.revisao)||0), revisoes: rows,
+    mk: novo ? novo.effectiveFrom : todayISO().slice(0,7), dataRev: novo ? novo.effectiveFrom+'-01' : todayISO(),
+    servicosExtras: k.servicosExtras || [], autorizacaoExtra: !!k.autorizacaoExtra, direitoImagem: !!k.direitoImagem };
+}
 function buildCartaReajusteHTML(c, novo, dataCarta, first){
   var si = cartaSistemaInfo(c);
   var vpm = Number(c.visitsPerMonth)||1;
@@ -3655,7 +3667,16 @@ function buildManutencaoProposalHTML(client, params, materiais){
   var pontos = (params.pontos && params.pontos.length) ? params.pontos : null;
   var nVis = pontos ? pontos.length : (Number(params.visitsPerMonth)||1);
   var pontosNomes = pontos ? tlJoin(pontos.map(function(x){ return x.nome; })) : '';
-  var analises = contractedAnalysesText(client);
+  // análises do pacote cadastrado no app (o que de fato vai para o laboratório), por parâmetro
+  var analises = (function(){
+    var out = [];
+    ((client && client.packageIds) || []).forEach(function(pid){
+      var pk = state.packages.find(function(x){ return x.id===pid; }); if(!pk) return;
+      var ps = pk.looseParams ? ((client.looseParamsSelected)||[]) : (pk.params||[]);
+      ps.map(paramLabel).forEach(function(l){ if(out.indexOf(l)<0) out.push(l); });
+    });
+    return out.length ? tlJoin(out) : contractedAnalysesText(client);
+  })();
   var rev = String(params.revisao||0).padStart(2,'0');
   var td = 'border:1px solid '+LINE+';padding:7px 9px;vertical-align:top;';
   var lbl = function(t){ return '<div style="font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#5B6B7E;font-weight:700;margin-bottom:3px;">'+t+'</div>'; };
@@ -3714,7 +3735,7 @@ function buildManutencaoProposalHTML(client, params, materiais){
             'Realizar a manutenção preventiva e limpeza de todo o sistema'+(pontos ? ' de cada ponto' : '')+'.',
             'Fornecer os kits de reagentes para verificação do teor de cloro no sistema.',
             'Reparar e trocar válvulas.'
-          ]))
+          ].concat((params.servicosExtras||[]).map(esc))))
     + clausula('3', 'PLANO DE AMOSTRAGEM E ANÁLISES',
         ul([
           'Apresentar plano de amostragem de acordo com a legislação vigente e cumpri-lo como acordado neste contrato.',
@@ -3725,7 +3746,7 @@ function buildManutencaoProposalHTML(client, params, materiais){
         '<p style="margin:0;text-align:justify;">As visitas ocorrerão mensalmente, de acordo com a necessidade do cliente, desde que alinhadas com a disponibilidade da contratada. Solicitações urgentes poderão ser aceitas, havendo disponibilidade, com atendimento em até 24h da solicitação.</p>'
         + '<p style="margin:6px 0 0;text-align:justify;">O controle das visitas se dará por documento elaborado pela contratada que comprove o acompanhamento técnico para efeito de quaisquer fiscalizações, em duas vias, assinado pela contratada e por um representante do contratante a cada visita periódica ou extra.</p>')
     + clausula('5', 'VISITAS EXTRAS',
-        '<p style="margin:0;text-align:justify;">Visitas extras poderão ser solicitadas e atendidas, havendo disponibilidade da contratada, com prazo de até 24h. Será cobrado o valor de <strong>'+fmtMoney(precoExtra)+' ('+moedaPorExtenso(precoExtra)+')</strong> por visita extra solicitada'+(pontos ? ', em qualquer um dos pontos de atendimento' : '')+', acertado junto do vencimento mensal deste contrato. O valor não inclui materiais utilizados.</p>')
+        '<p style="margin:0;text-align:justify;">Visitas extras poderão ser solicitadas'+(params.autorizacaoExtra ? ' mediante autorização por escrito do contratante' : '')+' e atendidas, havendo disponibilidade da contratada, com prazo de até 24h. Será cobrado o valor de <strong>'+fmtMoney(precoExtra)+' ('+moedaPorExtenso(precoExtra)+')</strong> por visita extra solicitada'+(pontos ? ', em qualquer um dos pontos de atendimento' : '')+', acertado junto do vencimento mensal deste contrato. O valor não inclui materiais utilizados.</p>')
     + clausula('6', 'O QUE NÃO ESTÁ INCLUSO',
         '<p style="margin:0;text-align:justify;">Pequenos reparos poderão, ou não, de acordo com sua complexidade, estar inclusos, visto que não são o objeto principal deste contrato. Havendo necessidade de emprego de novo material, este não estará, em hipótese alguma, incluso.</p>')
     + clausula('7', 'VIGÊNCIA, RENOVAÇÃO E CANCELAMENTO',
@@ -3736,6 +3757,9 @@ function buildManutencaoProposalHTML(client, params, materiais){
           + '. O pagamento se dará por boleto bancário com vencimento <strong>todo dia '+esc(params.dueDay||10)+' de cada mês</strong>. Após o vencimento, haverá cobrança de multa e juros previstos em lei, conforme o Código Tributário Nacional e o Código de Defesa do Consumidor.</p>'
           + (pontos ? '<p style="margin:6px 0 0;">A inclusão, retirada ou alteração de pontos de atendimento, bem como de seus valores, será formalizada por revisão deste contrato.</p>' : '')
           + materiaisHTML)
+    + (params.direitoImagem ? clausula('9', 'DIREITO DE IMAGEM',
+        '<p style="margin:0;text-align:justify;">Com o intuito de divulgar um trabalho sério, ético e técnico, a contratada poderá divulgar fotos e imagens dos serviços prestados, sempre com responsabilidade e respeito ao contratante. Marque abaixo a sua opção:</p>'
+        + '<p style="margin:8px 0 0;">(&nbsp;&nbsp;&nbsp;) Estou de acordo com a divulgação &nbsp;&nbsp;&nbsp;&nbsp; (&nbsp;&nbsp;&nbsp;) Não estou de acordo com a divulgação</p>') : '')
     // aceite e assinaturas
     + '<div class="doc-sign" style="margin-top:22px;">'
       + '<p style="margin:0 0 6px;font-weight:800;color:'+NAVY+';font-size:13.5px;">ACEITE</p>'
@@ -3865,7 +3889,11 @@ function contratoRevisaoHTML(client, params){
       + '<td style="'+b+'text-align:center;">Aprovação<br>___/___/___</td><td style="'+b+'text-align:center;">Página final</td></tr></table>'
     + '<table style="width:100%;border-collapse:collapse;font-size:12px;"><tr><th colspan="5" style="'+b+'background:#9fd3e0;">Histórico de Revisão</th></tr>'
       + '<tr><th style="'+b+'">Revisão</th><th style="'+b+'">Data</th><th style="'+b+'">Mudanças realizadas</th><th style="'+b+'">Motivo da revisão</th><th style="'+b+'">Aprovado por</th></tr>'
-      + [0,1,2,3,4,5].map(function(){ return '<tr>'+('<td style="'+b+'height:34px;"></td>').repeat(5)+'</tr>'; }).join('')
+      + (params.revisoes||[]).map(function(r){
+          var dt = r.data ? (/^\d{4}-\d{2}-\d{2}$/.test(r.data) ? fmtDate(r.data) : esc(r.data)) : '';
+          return '<tr><td style="'+b+'text-align:center;">'+esc(r.rev)+'</td><td style="'+b+'text-align:center;white-space:nowrap;">'+dt+'</td><td style="'+b+'">'+(r.itens||[]).map(esc).join('<br>')+'</td><td style="'+b+'">'+esc(r.motivo||'')+'</td><td style="'+b+'"></td></tr>';
+        }).join('')
+      + [0,1,2,3,4,5].slice((params.revisoes||[]).length > 3 ? 4 : (params.revisoes||[]).length).map(function(){ return '<tr>'+('<td style="'+b+'height:34px;"></td>').repeat(5)+'</tr>'; }).join('')
     + '</table></div>';
 }
 function buildImplantacaoProposalHTML(client, params, materiais){
@@ -4042,6 +4070,7 @@ function renderPropostas(modo){
         + '</select></div>'
     + '</div>'
     + ppNovoClienteHTML()
+    + '<div id="pp-rev-box" style="display:none;background:#FFF8E6;border:1px solid #F2D58A;border-radius:10px;padding:12px 14px;margin-bottom:14px;line-height:1.55;"></div>'
     + '<div class="grid2">'
       + '<div class="field"><label id="pp-number-label">N° da proposta</label><input type="text" id="pp-number" value="'+esc(nextNum)+'" readonly style="background:#f0f0f0;color:#555;">'
         + '<div class="hint" style="margin-top:4px;" id="pp-number-hint">Gerado automaticamente — veja todos os números na aba Numeração.</div></div>'
@@ -4079,10 +4108,26 @@ function renderPropostas(modo){
 
   var clientSel = $('#pp-client'), typeSel = $('#pp-type'), visitsWrap = $('#pp-visits-wrap'), visitsSel = $('#pp-visits'), numberInp = $('#pp-number'), manutTermsWrap = $('#pp-manut-terms-wrap');
   function ppClient(){ return state.clients.find(function(x){ return x.id===clientSel.value; }) || null; }
+  var ppRev = null; // revisão de contrato existente
+  function syncRevisao(){
+    var box = $('#pp-rev-box'), c = ppClient();
+    ppRev = null;
+    if(!box) return;
+    var info = (typeSel.value==='manutencao' && c && typeof contratoRevisaoParams==='function') ? contratoRevisaoParams(c) : null;
+    if(!info){ box.style.display = 'none'; box.innerHTML = ''; return; }
+    var marcado = !box.dataset.off || box.dataset.client !== c.id;
+    box.dataset.client = c.id; if(marcado) delete box.dataset.off;
+    box.style.display = 'block';
+    box.innerHTML = '<strong>Este cliente já tem o contrato '+esc(info.numero)+' (Rev '+String(info.k.revisao||0).padStart(2,'0')+').</strong><br>'
+      + '<label style="display:flex;gap:8px;align-items:flex-start;margin-top:6px;font-weight:500;"><input type="checkbox" id="pp-rev-chk" style="width:auto;margin-top:4px;" '+(marcado?'checked':'')+'> '
+      + '<span>Gerar como <strong>Revisão '+String(info.revisao).padStart(2,'0')+'</strong> do mesmo contrato'+(info.novo ? ', já com o reajuste de '+esc(monthKeyLabel(info.novo.effectiveFrom).toLowerCase()) : '')+' e o histórico de revisões preenchido. Desmarque para fazer um contrato novo, com número novo.</span></label>';
+    $('#pp-rev-chk').onchange = function(){ if(this.checked) delete box.dataset.off; else box.dataset.off = '1'; syncRevisao(); syncNumber(); renderValores(); };
+    if(marcado){ ppRev = info; $('#pp-date').value = info.dataRev; }
+  }
   function syncNumber(){
     var isManut = typeSel.value==='manutencao';
     $('#pp-number-label').textContent = isManut ? 'N° do contrato' : 'N° da proposta';
-    numberInp.value = isManut ? numContratoProximo($('#pp-date').value || todayISO()).numero : nextProposalNumberPreview();
+    numberInp.value = isManut ? (ppRev ? ppRev.numero+' — Rev '+String(ppRev.revisao).padStart(2,'0') : numContratoProximo($('#pp-date').value || todayISO()).numero) : nextProposalNumberPreview();
     $('#pp-number-hint').textContent = isManut ? 'Contratos têm sequência própria e contínua (não zera na virada do ano), separada das propostas. Veja tudo na aba Numeração.'
       : 'Propostas de instalação seguem a sequência das propostas. Veja tudo na aba Numeração.';
   }
@@ -4091,19 +4136,19 @@ function renderPropostas(modo){
     if(!wrap) return;
     if(!isManut){ wrap.style.display = 'none'; wrap.innerHTML = ''; if($('#pp-resumo')) $('#pp-resumo').style.display = 'none'; return; }
     var dt = $('#pp-date').value || todayISO();
-    var tab = dt >= todayISO() ? pricingLatest() : pricingFor(dt.slice(0,7)); // contrato novo: tabela mais recente (ex.: 2027)
+    var tab = ppRev ? (ppRev.novo || pricingFor(ppRev.mk)) : (dt >= todayISO() ? pricingLatest() : pricingFor(dt.slice(0,7))); // contrato novo: tabela mais recente (ex.: 2027)
     var pts = clientPoints(c), html = '<div class="section-title">Valores do contrato</div>';
     var fmtIn = function(v){ return v==null ? '' : String(round2(v)).replace('.',','); };
     if(pts.length){
       html += '<div class="hint" style="margin-bottom:8px;">Este cliente tem '+pts.length+' pontos de atendimento. O contrato lista cada ponto com o seu valor, prevê 1 visita por mês e coleta em cada ponto, e cobra a soma num único boleto.</div>';
       pts.forEach(function(pt, i){
-        var v = Number(tab.price1);
+        var v = ppRev ? pointMonthlyValue(c, pt, ppRev.mk) : Number(tab.price1); if(v==null) v = Number(tab.price1);
         html += '<div class="grid2"><div class="field"><label>Ponto '+(i+1)+'</label><input type="text" value="'+esc(pt.name||'')+'" readonly style="background:#f0f0f0;color:#555;"></div>'
           + '<div class="field"><label>Valor mensal do ponto (R$)</label><input type="text" inputmode="decimal" class="pp-pt-val" data-id="'+esc(pt.id)+'" value="'+fmtIn(v)+'"></div></div>';
       });
     } else {
       var vis = Number(visitsSel.value)||1;
-      var v1 = precoPorVisitas(vis, tab);
+      var v1 = ppRev ? mensalidadeCliente(c, ppRev.mk) : precoPorVisitas(vis, tab);
       html += '<div class="field" style="max-width:260px;"><label>Valor mensal (R$)</label><input type="text" inputmode="decimal" id="pp-valor" value="'+fmtIn(v1)+'"></div>';
     }
     html += '<div class="field" style="max-width:260px;"><label>Valor da visita extra (R$)</label><input type="text" inputmode="decimal" id="pp-extra" value="'+fmtIn(tab.priceExtra)+'"></div>'
@@ -4117,7 +4162,7 @@ function renderPropostas(modo){
       var r = $('#pp-resumo');
       if(r){ r.style.display = 'block';
         r.innerHTML = '<strong>Valor mensal: '+fmtMoney(t)+'</strong>'+(pts.length ? ' ('+pts.length+' pontos × '+fmtMoney(t/pts.length)+')' : ' ('+nv+(nv===1?' visita':' visitas')+' por mês)')
-          + ' <span class="hint">— '+(tab.effectiveFrom ? 'tabela de valores a partir de '+esc(monthKeyLabel(tab.effectiveFrom).toLowerCase()) : 'tabela de valores atual')+'</span><br>'
+          + ' <span class="hint">— '+(ppRev ? 'valor do cliente'+(ppRev.novo ? ' já reajustado para '+esc(monthKeyLabel(ppRev.novo.effectiveFrom).toLowerCase()) : '') : (tab.effectiveFrom ? 'tabela de valores a partir de '+esc(monthKeyLabel(tab.effectiveFrom).toLowerCase()) : 'tabela de valores atual'))+'</span><br>'
           + 'Visita extra: '+fmtMoney(ex)+' · Vencimento todo dia '+esc(($('#pp-dueday')||{}).value||10)+' · Vigência '+esc(($('#pp-term')||{}).value||12)+' meses'; }
     }
     ['#pp-dueday','#pp-term'].forEach(function(sel){ var el = $(sel); if(el) el.oninput = tot; });
@@ -4145,6 +4190,7 @@ function renderPropostas(modo){
     var c = state.clients.find(function(x){ return x.id===clientSel.value; });
     $('#pp-novo').style.display = clientSel.value==='__novo__' ? 'block' : 'none';
     if(c && c.visitsPerMonth) visitsSel.value = String(c.visitsPerMonth);
+    syncRevisao();
     syncTypeFields();
   }
   clientSel.addEventListener('change', syncFromClient);
@@ -4237,7 +4283,7 @@ function renderPropostas(modo){
       return;
     }
     hint.textContent = '';
-    var numC = numContratoProximo(dateVal); number = numC.numero; numberInp.value = number;
+    var numC = ppRev ? null : numContratoProximo(dateVal); number = ppRev ? ppRev.numero : numC.numero; numberInp.value = ppRev ? number+' — Rev '+String(ppRev.revisao).padStart(2,'0') : number;
     var ptsC = clientPoints(c);
     var params = {
       contractNumber: number,
@@ -4260,6 +4306,7 @@ function renderPropostas(modo){
       params.custoMensal = parseMoneyBR(($('#pp-valor')||{}).value);
       if(params.custoMensal==null){ hint.textContent = 'Informe o valor mensal do contrato.'; return; }
     }
+    if(ppRev){ params.revisao = ppRev.revisao; params.revisoes = ppRev.revisoes; params.servicosExtras = ppRev.servicosExtras; params.autorizacaoExtra = ppRev.autorizacaoExtra; params.direitoImagem = ppRev.direitoImagem; }
     params.precoExtra = parseMoneyBR(($('#pp-extra')||{}).value);
     if(params.precoExtra==null) params.precoExtra = pricingLatest().priceExtra;
     var docHtmlM = buildManutencaoProposalHTML(c, params, materiais);
@@ -4272,8 +4319,11 @@ function renderPropostas(modo){
     area.dataset.docKind = 'contrato';
     area.dataset.docClientId = c.id; area.dataset.docDate = dateVal; area.dataset.docValor = String(params.custoMensal);
     if($('#pp-attach') && typeof fbAssets!=='undefined'){ $('#pp-attach').style.display = 'inline-flex'; $('#pp-attach').disabled = false; $('#pp-attach').textContent = 'Guardar no cadastro do cliente'; }
-    numRegistrar({ tipo:'contrato', prefixo:'CM', seq: numC.seq, ano: numC.ano, numero: number, clientId: c.id, clientName: c.name||'', data: dateVal, valorMensal: params.custoMensal });
-    state.numeracao.push({ tipo:'contrato', prefixo:'CM', seq: numC.seq, ano: numC.ano, numero: number }); // evita repetir antes do retorno do banco
+    area.dataset.docRev = ppRev ? String(ppRev.revisao).padStart(2,'0') : '';
+    if(!ppRev){
+      numRegistrar({ tipo:'contrato', prefixo:'CM', seq: numC.seq, ano: numC.ano, numero: number, clientId: c.id, clientName: c.name||'', data: dateVal, valorMensal: params.custoMensal });
+      state.numeracao.push({ tipo:'contrato', prefixo:'CM', seq: numC.seq, ano: numC.ano, numero: number }); // evita repetir antes do retorno do banco
+    }
     await saveGeneratedProposal(c, 'manutencao', number, dateVal, docHtmlM, { params: params, materiais: materiais });
     syncNumber();
   });
@@ -4288,10 +4338,10 @@ function renderPropostas(modo){
     btn.disabled = true; btn.textContent = 'Guardando…';
     try{
       var blob = await buildPaginatedPdfBlob(area);
-      var nome = 'Contrato_'+String(area.dataset.docNumber||'').replace(/[^0-9A-Za-z]+/g,'-')+'.pdf';
+      var nome = 'Contrato_'+String(area.dataset.docNumber||'').replace(/[^0-9A-Za-z]+/g,'-')+(area.dataset.docRev ? '_Rev'+area.dataset.docRev : '')+'.pdf';
       var file = new File([blob], nome, { type: 'application/pdf' });
       var up = await fbAssets.upload(file, { clientId: area.dataset.docClientId });
-      await createDoc('contratos', { clientId: area.dataset.docClientId, tipo: 'contrato', titulo: 'Contrato de manutenção Nº '+(area.dataset.docNumber||''),
+      await createDoc('contratos', { clientId: area.dataset.docClientId, tipo: area.dataset.docRev ? 'renovacao' : 'contrato', titulo: 'Contrato de manutenção Nº '+(area.dataset.docNumber||'')+(area.dataset.docRev ? ' — Rev '+area.dataset.docRev : ''),
         vigencia: area.dataset.docDate || todayISO(), valorMensal: Number(area.dataset.docValor)||null, descricao: '', publicado: false,
         assetId: up.id, fileName: nome, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
       btn.textContent = 'Guardado ✓';
@@ -7637,8 +7687,9 @@ function renderContratos(){
     ctrWireToggle();
     return;
   }
-  if(actions){ actions.innerHTML = '<button class="btn primary" id="btn-new-ctr">+ Anexar documento</button>';
-    $('#btn-new-ctr').onclick = function(){ openContratoModal(null, ctrClientFilter); }; }
+  if(actions){ actions.innerHTML = '<button class="btn" id="btn-rev-all">Gerar contratos revisados (todos)</button> <button class="btn primary" id="btn-new-ctr">+ Anexar documento</button>';
+    $('#btn-new-ctr').onclick = function(){ openContratoModal(null, ctrClientFilter); };
+    $('#btn-rev-all').onclick = ctrGerarRevisoesTodos; }
   var clients = state.clients.filter(function(c){ return clientCategoryOf(c)==='manutencao' || state.contratos.some(function(d){ return d.clientId===c.id; }); })
     .sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
   var html = '<div class="panel"><div class="panel-head" style="flex-wrap:wrap;gap:10px;"><h2>Contratos por cliente</h2>'
@@ -7764,6 +7815,51 @@ function wirePortalContrato(){
     var d = state.contratos.find(function(x){ return x.id===b.dataset.id; }), c = state.clients[0] || {};
     b.disabled = true; fbDownloadReportFile(d.assetId, safeFileSlug((d.titulo||ctrTipo(d.tipo))+'_'+(d.vigencia||'')+'_'+(c.name||''))+'.pdf').then(function(){ b.disabled = false; });
   }; });
+}
+
+/* Gera, de uma vez, o contrato revisado de cada cliente (mesmo número, revisão nova com reajuste e
+   renumeração, histórico preenchido) e guarda o PDF em "Contratos dos clientes", sem publicar. */
+async function ctrGerarRevisoesTodos(){
+  try{ if(typeof numSyncClausulas==='function') numSyncClausulas(); }catch(e){}
+  var lista = state.clients.filter(function(c){ return isActiveClient(c); }).map(function(c){ return { c: c, info: contratoRevisaoParams(c) }; })
+    .filter(function(x){ return x.info; }).sort(function(a,b){ return String(a.info.numero).localeCompare(String(b.info.numero)); });
+  if(!lista.length){ customAlert('Nenhum cliente com contrato registrado na aba Numeração. Aplique a numeração lá primeiro.'); return; }
+  var titulo = function(x){ return 'Contrato de manutenção Nº '+x.info.numero+' — Rev '+String(x.info.revisao).padStart(2,'0')+' (para assinatura)'; };
+  var jaTem = function(x){ return state.contratos.some(function(d){ return d.clientId===x.c.id && d.titulo===titulo(x); }); };
+  var novos = lista.filter(function(x){ return !jaTem(x); });
+  if(!novos.length){ customAlert('Os contratos revisados de todos os clientes já foram gerados. Para refazer algum, exclua o documento dele e clique de novo.'); return; }
+  customConfirm('Gerar e guardar o contrato revisado de '+novos.length+' cliente(s)?\n\n'+novos.map(function(x){ return x.c.name+' — '+x.info.numero+' Rev '+String(x.info.revisao).padStart(2,'0'); }).join('\n')
+      +'\n\nOs PDFs ficam em "Contratos dos clientes", sem aparecer para o cliente.', async function(){
+    var btn = $('#btn-rev-all'); if(btn){ btn.disabled = true; }
+    var ok = 0, falhas = [];
+    for(var i=0;i<novos.length;i++){
+      var x = novos[i], c = x.c, info = x.info;
+      if(btn) btn.textContent = 'Gerando '+(i+1)+' de '+novos.length+'…';
+      try{
+        var pts = clientPoints(c), tab = info.novo || pricingFor(info.mk), endC = clienteEnderecoLinhas(c);
+        var params = { contractNumber: info.numero, contractDate: info.dataRev, dueDay: 10, termMonths: 12,
+          visitsPerMonth: pts.length || Number(c.visitsPerMonth)||1, precoExtra: tab.priceExtra,
+          revisao: info.revisao, revisoes: info.revisoes, servicosExtras: info.servicosExtras, autorizacaoExtra: info.autorizacaoExtra, direitoImagem: info.direitoImagem };
+        if(pts.length){
+          params.pontos = pts.map(function(pt){ var v = pointMonthlyValue(c, pt, info.mk); return { nome: pt.name||'Ponto', endereco: [pt.addressStreet, pt.addressNeighborhood].filter(Boolean).join(' – ') || endC.linha1,
+            sistema: (pt.systems||[]).map(function(s){ return (SYSTEM_TYPES[s.type]||{}).label || s.type; }).join(', ') || '—', valor: v!=null ? v : Number(tab.price1) }; });
+          params.custoMensal = round2(params.pontos.reduce(function(t,p){ return t + p.valor; }, 0));
+        } else params.custoMensal = mensalidadeCliente(c, info.mk);
+        var html = buildManutencaoProposalHTML(c, params, []);
+        var area = document.createElement('div'); area.className = 'doc-page print-doc'; area.innerHTML = html;
+        var blob = await buildPaginatedPdfBlob(area);
+        var nome = 'Contrato_'+info.numero.replace(/[^0-9A-Za-z]+/g,'-')+'_Rev'+String(info.revisao).padStart(2,'0')+'.pdf';
+        var up = await fbAssets.upload(new File([blob], nome, { type: 'application/pdf' }), { clientId: c.id });
+        await createDoc('contratos', { clientId: c.id, tipo: 'renovacao', titulo: titulo(x), vigencia: info.dataRev, valorMensal: params.custoMensal,
+          descricao: '', publicado: false, assetId: up.id, fileName: nome, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+        await saveGeneratedProposal(c, 'manutencao', info.numero, info.dataRev, html, { params: params, materiais: [] });
+        ok++;
+      }catch(e){ console.log('rev', c.name, e); falhas.push(c.name); }
+    }
+    if(btn){ btn.disabled = false; btn.textContent = 'Gerar contratos revisados (todos)'; }
+    customAlert(ok+' contrato(s) revisado(s) guardado(s) em "Contratos dos clientes".'+(falhas.length ? ' Falharam: '+falhas.join(', ')+'.' : '')+' Confira cada um pelo botão PDF antes de imprimir.');
+  });
+  if($('#modal-confirm-body')) $('#modal-confirm-body').style.whiteSpace = 'pre-line';
 }
 
 /* ===================== CAMPO → AMOSTRAS PARA O LABORATÓRIO =====================
@@ -8158,9 +8254,6 @@ var NUM_HISTORICO = {
     ],
     "motivo": ""
    }
-  ],
-  "regulariza": [
-   "Regularização: valor mensal praticado de R$ 240,00 (a Rev 03 indicava R$ 220,00)"
   ]
  },
  {
@@ -8227,9 +8320,6 @@ var NUM_HISTORICO = {
     ],
     "motivo": ""
    }
-  ],
-  "regulariza": [
-   "Regularização: 2 visitas técnicas por mês e valor praticado de R$ 400,00 (a Rev 02 indicava 1 visita e R$ 220,00)"
   ]
  },
  {
@@ -8263,10 +8353,7 @@ var NUM_HISTORICO = {
   "kw": "Sader",
   "data": "2024-09-10",
   "revisao": 0,
-  "revisoes": [],
-  "regulariza": [
-   "Regularização: valor mensal praticado de R$ 240,00 (a Rev 00 indicava R$ 230,00)"
-  ]
+  "revisoes": []
  },
  {
   "numero": "CM 007/25",
@@ -8348,6 +8435,7 @@ function numTabela(list, tipo){
     }).join('') + '</tbody></table></div>';
 }
 function renderNumeracao(){
+  try{ numSyncClausulas(); }catch(e){ console.log(e); }
   var L = numListas(), proxC = numContratoProximo(todayISO()), proxP = nextProposalNumberPreview();
   var pendH = numHistoricoPendente(), temHist = !pendH.contratos && !pendH.propostas;
   var comContrato = {};
@@ -8397,7 +8485,8 @@ function numImportarHistorico(){
       var c = numClientByKw(h.kw), pr = numParse(h.numero);
       numRegistrar({ tipo:'contrato', prefixo: pr.prefixo, seq: pr.seq, ano: pr.ano, numero: h.numero, numeroAnterior: h.numeroAnterior || '',
         clientId: c ? c.id : null, clientName: c ? c.name : h.kw, data: h.data || null, revisao: h.revisao || 0, revisoes: h.revisoes || [],
-        regulariza: h.regulariza || [], encerrado: !!h.encerrado, foraSequencia: !!h.foraSequencia,
+        regulariza: [], servicosExtras: h.servicosExtras || [], autorizacaoExtra: !!h.autorizacaoExtra, direitoImagem: !!h.direitoImagem, clausulasV: 4,
+        encerrado: !!h.encerrado, foraSequencia: !!h.foraSequencia,
         obs: h.obs || (h.numeroAnterior ? 'Antes: '+h.numeroAnterior : ''), origem: 'historico', criadoEm: now });
     });
   }
@@ -8457,6 +8546,20 @@ function numModal(n){
     closeModal();
   };
   openModal();
+}
+
+/* Atualiza contratos já importados: cláusulas próprias de cada cliente (decididas em 02/11/2026) e
+   revisão de janeiro só com reajuste + renumeração (sem itens de regularização). */
+function numSyncClausulas(){
+  if(!db) return 0;
+  var n = 0;
+  NUM_HISTORICO.contratos.forEach(function(h){
+    var d = state.numeracao.find(function(x){ return x.tipo==='contrato' && x.numero===h.numero && x.origem==='historico'; });
+    if(!d || d.clausulasV===4) return;
+    var patch = { regulariza: [], servicosExtras: h.servicosExtras || [], autorizacaoExtra: !!h.autorizacaoExtra, direitoImagem: !!h.direitoImagem, clausulasV: 4 };
+    Object.assign(d, patch); updateDoc('numeracao', d.id, patch); n++;
+  });
+  return n;
 }
 
 /* ===================== BOOT ===================== */
