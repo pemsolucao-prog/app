@@ -846,20 +846,19 @@ button.pt-card{cursor:pointer;}
     <button class="navbtn" data-tab="pacotes"><span class="ico">04</span>Pacotes</button>
     <button class="navbtn" data-tab="valores"><span class="ico">05</span>Valores</button>
     <button class="navbtn" data-tab="materiais"><span class="ico">06</span>Materiais</button>
-    <button class="navbtn" data-tab="propostas"><span class="ico">07</span>Propostas</button>
+    <button class="navbtn" data-tab="propostas"><span class="ico">07</span>Propostas e Contratos</button>
     <button class="navbtn" data-tab="numeracao"><span class="ico">№</span>Numeração</button>
     <button class="navbtn" data-tab="equipe"><span class="ico">08</span>Equipe</button>
     <button class="navbtn" data-tab="financeiro"><span class="ico">09</span>Financeiro</button>
     <button class="navbtn" data-tab="panorama"><span class="ico">10</span>Panorama</button>
     <button class="navbtn" data-tab="relatorios"><span class="ico">11</span>Relatórios</button>
-    <button class="navbtn" data-tab="contratos"><span class="ico">§</span>Contratos</button>
     <button class="navbtn" data-tab="apoio"><span class="ico">12</span>Apoio ao Cliente</button>
     <button class="navbtn" data-tab="acessos"><span class="ico">13</span>Contas e acessos</button>
     <button class="navbtn" data-tab="backup"><span class="ico">14</span>Backup</button>
     <!-- Demais abas (Manutenções, Análises, Orçamentos) temporariamente
          removidas da navegação a pedido do usuário, para isolar o problema de conexão com o banco.
          O código continua abaixo, intacto, para religarmos assim que resolvido. -->
-    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11</div>
+    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 01/11 23:06</span></div>
   </nav>
   <main id="main">
     <div id="topbar">
@@ -1924,7 +1923,8 @@ function render(){
   if(currentTab==='campo'){ renderCampo(); return; }
   if(currentTab==='portal'){ renderPortal(); return; }
   if(currentTab==='solicitacoes'){ renderSolicitacoes(); return; }
-  if(currentTab==='contratos'){ renderContratos(); return; }
+  if(currentTab==='contratos'){ currentTab = 'propostas'; ctrMode = 'lista'; }
+  if(currentTab==='propostas'){ renderContratos(); return; }
   if(currentTab==='dashboard') renderDashboard();
   else if(currentTab==='clientes'){ actions.innerHTML = '<button class="btn primary" id="btn-new-client">+ Novo cliente</button>'; $('#btn-new-client').onclick=function(){openClientModal(null, (clientFilter==='instalacao'||clientFilter==='extra')?clientFilter:'manutencao', clientFilter==='propostas'?'Proposta enviada':null);}; renderClientes(); }
   else if(currentTab==='valores') renderValores();
@@ -4002,14 +4002,17 @@ function renderPropostas(modo){
         + '<div class="hint" style="margin-top:4px;" id="pp-number-hint">Gerado automaticamente — veja todos os números na aba Numeração.</div></div>'
       + '<div class="field"><label>Data</label><input type="date" id="pp-date" value="'+todayISO()+'"></div>'
     + '</div>'
+    + '<div id="pp-visits-wrap" class="field" style="display:none;max-width:360px;"><label>Visitas por mês</label><select id="pp-visits">'
+      + [1,2,3,4].map(function(n){ return '<option value="'+n+'">'+n+(n===1?' visita':' visitas')+'</option>'; }).join('')
+      + '</select></div>'
+    + '<div id="pp-resumo" style="display:none;background:#EEF4FB;border-left:4px solid #1B5FA8;border-radius:8px;padding:12px 14px;margin:6px 0 12px;line-height:1.6;"></div>'
+    + '<details id="pp-ajustes" style="display:none;margin-bottom:10px;"><summary style="cursor:pointer;font-weight:600;color:#1B5FA8;">Ajustar valores e prazos (opcional)</summary><div style="padding-top:10px;">'
     + '<div id="pp-manut-terms-wrap" class="grid2" style="display:none;">'
       + '<div class="field"><label>Dia de vencimento mensal</label><input type="number" id="pp-dueday" min="1" max="28" value="10"></div>'
       + '<div class="field"><label>Vigência (meses)</label><input type="number" id="pp-term" min="1" value="12"></div>'
     + '</div>'
     + '<div id="pp-valores-wrap" style="display:none;"></div>'
-    + '<div id="pp-visits-wrap" class="field" style="display:none;"><label>Quantidade de visitas por mês (usada para puxar o valor da aba Valores)</label><select id="pp-visits">'
-      + [1,2,3,4].map(function(n){ return '<option value="'+n+'">'+n+(n===1?' visita':' visitas')+'</option>'; }).join('')
-      + '</select></div>'
+    + '</div></details>'
     + '<div class="section-title" id="pp-materials-title">Materiais previstos (opcional)</div>'
     + '<div class="hint" style="margin-bottom:8px;" id="pp-materials-hint">Marque os materiais que serão empregados neste serviço e informe a quantidade — os valores entram automaticamente no documento gerado.</div>'
     + '<div id="pp-materials-list"></div>'
@@ -4041,30 +4044,38 @@ function renderPropostas(modo){
   function renderValores(){
     var wrap = $('#pp-valores-wrap'), c = ppClient(), isManut = typeSel.value==='manutencao';
     if(!wrap) return;
-    if(!isManut){ wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
-    var dt = $('#pp-date').value || todayISO(), mk = dt >= todayISO() ? '9999-12' : dt.slice(0,7);
+    if(!isManut){ wrap.style.display = 'none'; wrap.innerHTML = ''; if($('#pp-resumo')) $('#pp-resumo').style.display = 'none'; return; }
+    var dt = $('#pp-date').value || todayISO();
+    var tab = dt >= todayISO() ? pricingLatest() : pricingFor(dt.slice(0,7)); // contrato novo: tabela mais recente (ex.: 2027)
     var pts = clientPoints(c), html = '<div class="section-title">Valores do contrato</div>';
     var fmtIn = function(v){ return v==null ? '' : String(round2(v)).replace('.',','); };
     if(pts.length){
       html += '<div class="hint" style="margin-bottom:8px;">Este cliente tem '+pts.length+' pontos de atendimento. O contrato lista cada ponto com o seu valor, prevê 1 visita por mês e coleta em cada ponto, e cobra a soma num único boleto.</div>';
       pts.forEach(function(pt, i){
-        var v = pointMonthlyValue(c, pt, mk); if(v==null) v = pt.value;
+        var v = Number(tab.price1);
         html += '<div class="grid2"><div class="field"><label>Ponto '+(i+1)+'</label><input type="text" value="'+esc(pt.name||'')+'" readonly style="background:#f0f0f0;color:#555;"></div>'
           + '<div class="field"><label>Valor mensal do ponto (R$)</label><input type="text" inputmode="decimal" class="pp-pt-val" data-id="'+esc(pt.id)+'" value="'+fmtIn(v)+'"></div></div>';
       });
     } else {
       var vis = Number(visitsSel.value)||1;
-      var v1 = (c && hasClientValue(c) && Number(c.visitsPerMonth)===vis) ? clientMonthlyValue(c, mk) : precoPorVisitas(vis, pricingLatest());
+      var v1 = precoPorVisitas(vis, tab);
       html += '<div class="field" style="max-width:260px;"><label>Valor mensal (R$)</label><input type="text" inputmode="decimal" id="pp-valor" value="'+fmtIn(v1)+'"></div>';
     }
-    html += '<div class="field" style="max-width:260px;"><label>Valor da visita extra (R$)</label><input type="text" inputmode="decimal" id="pp-extra" value="'+fmtIn(pricingLatest().priceExtra)+'"></div>'
+    html += '<div class="field" style="max-width:260px;"><label>Valor da visita extra (R$)</label><input type="text" inputmode="decimal" id="pp-extra" value="'+fmtIn(tab.priceExtra)+'"></div>'
       + '<div class="hint" id="pp-valor-total" style="font-weight:600;"></div>';
     wrap.innerHTML = html; wrap.style.display = 'block';
     visitsWrap.style.display = pts.length ? 'none' : 'block';
     function tot(){
       var t = pts.length ? $all('.pp-pt-val').reduce(function(a,i){ return a + (parseMoneyBR(i.value)||0); }, 0) : (parseMoneyBR(($('#pp-valor')||{}).value)||0);
       $('#pp-valor-total').textContent = 'Total mensal no contrato: '+fmtMoney(t);
+      var ex = parseMoneyBR(($('#pp-extra')||{}).value), nv = pts.length || Number(visitsSel.value)||1;
+      var r = $('#pp-resumo');
+      if(r){ r.style.display = 'block';
+        r.innerHTML = '<strong>Valor mensal: '+fmtMoney(t)+'</strong>'+(pts.length ? ' ('+pts.length+' pontos × '+fmtMoney(t/pts.length)+')' : ' ('+nv+(nv===1?' visita':' visitas')+' por mês)')
+          + ' <span class="hint">— '+(tab.effectiveFrom ? 'tabela de valores a partir de '+esc(monthKeyLabel(tab.effectiveFrom).toLowerCase()) : 'tabela de valores atual')+'</span><br>'
+          + 'Visita extra: '+fmtMoney(ex)+' · Vencimento todo dia '+esc(($('#pp-dueday')||{}).value||10)+' · Vigência '+esc(($('#pp-term')||{}).value||12)+' meses'; }
     }
+    ['#pp-dueday','#pp-term'].forEach(function(sel){ var el = $(sel); if(el) el.oninput = tot; });
     $all('#pp-valores-wrap input').forEach(function(i){ i.addEventListener('input', tot); });
     tot();
   }
@@ -4072,6 +4083,7 @@ function renderPropostas(modo){
     var isManut = typeSel.value==='manutencao';
     visitsWrap.style.display = isManut ? 'block' : 'none';
     manutTermsWrap.style.display = isManut ? 'grid' : 'none';
+    if($('#pp-ajustes')) $('#pp-ajustes').style.display = isManut ? 'block' : 'none';
     var title = $('#pp-materials-title'), hint = $('#pp-materials-hint');
     ['#pp-materials-title','#pp-materials-hint','#pp-materials-list','#pp-materials-total'].forEach(function(sel){ var el = $(sel); if(el) el.style.display = isManut ? 'none' : ''; });
     if(isManut){
@@ -7562,25 +7574,26 @@ function ctrSorted(list){ return list.slice().sort(function(a,b){ return (b.vige
 function ctrVigente(list){ return ctrSorted(list).filter(function(d){ return d.tipo==='contrato' || d.tipo==='renovacao'; })[0] || null; }
 function ctrValorAtual(list){ var today = localISO(); return ctrSorted(list).filter(function(d){ return d.valorMensal!=null && (d.vigencia||'') <= today; })[0] || null; }
 
-var ctrMode = 'lista'; // 'lista' | 'gerar'
+// Aba única "Propostas e Contratos": nova proposta (instalação) · novo contrato (manutenção) · contratos dos clientes
+var ctrMode = 'proposta'; // 'proposta' | 'contrato' | 'lista'
+TAB_META.propostas = { title:'Propostas e Contratos', sub:'Nova proposta de instalação, novo contrato de manutenção e os contratos de cada cliente' };
 function ctrToggleHTML(){
-  return '<div class="campo-toggle" role="group" aria-label="Contratos" style="margin-bottom:16px;max-width:520px;">'
-    + '<button type="button" class="ctr-mode" data-mode="lista" aria-pressed="'+(ctrMode==='lista')+'">Contratos por cliente</button>'
-    + '<button type="button" class="ctr-mode" data-mode="gerar" aria-pressed="'+(ctrMode==='gerar')+'">Gerar contrato</button></div>';
+  var b = function(m, t){ return '<button type="button" class="ctr-mode" data-mode="'+m+'" aria-pressed="'+(ctrMode===m)+'">'+t+'</button>'; };
+  return '<div class="campo-toggle" role="group" aria-label="Propostas e contratos" style="margin-bottom:16px;max-width:760px;">'
+    + b('proposta', 'Nova proposta (instalação)') + b('contrato', 'Novo contrato (manutenção)') + b('lista', 'Contratos dos clientes') + '</div>';
 }
 function ctrWireToggle(){ $all('.ctr-mode').forEach(function(b){ b.onclick = function(){ ctrMode = b.dataset.mode; renderContratos(); window.scrollTo(0,0); }; }); }
 function renderContratos(){
   var actions = $('#page-actions');
-  if(ctrMode==='gerar'){
+  if(ctrMode==='proposta' || ctrMode==='contrato'){
     if(actions) actions.innerHTML = '';
-    renderPropostas('contrato');
+    renderPropostas(ctrMode);
     $('#view').insertAdjacentHTML('afterbegin', ctrToggleHTML());
     ctrWireToggle();
     return;
   }
-  if(actions){ actions.innerHTML = '<button class="btn" id="btn-new-ctr">+ Anexar documento</button> <button class="btn primary" id="btn-gen-ctr">+ Gerar contrato</button>';
-    $('#btn-new-ctr').onclick = function(){ openContratoModal(null, ctrClientFilter); };
-    $('#btn-gen-ctr').onclick = function(){ ctrMode = 'gerar'; renderContratos(); }; }
+  if(actions){ actions.innerHTML = '<button class="btn primary" id="btn-new-ctr">+ Anexar documento</button>';
+    $('#btn-new-ctr').onclick = function(){ openContratoModal(null, ctrClientFilter); }; }
   var clients = state.clients.filter(function(c){ return clientCategoryOf(c)==='manutencao' || state.contratos.some(function(d){ return d.clientId===c.id; }); })
     .sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
   var html = '<div class="panel"><div class="panel-head" style="flex-wrap:wrap;gap:10px;"><h2>Contratos por cliente</h2>'
