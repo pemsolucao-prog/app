@@ -862,7 +862,7 @@ button.pt-card{cursor:pointer;}
     <!-- Demais abas (Manutenções, Análises, Orçamentos) temporariamente
          removidas da navegação a pedido do usuário, para isolar o problema de conexão com o banco.
          O código continua abaixo, intacto, para religarmos assim que resolvido. -->
-    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 02/11 14:45</span></div>
+    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 02/11 15:28</span></div>
   </nav>
   <main id="main">
     <div id="topbar">
@@ -2577,7 +2577,10 @@ function renderClientes(){
       + '<td><span class="pill '+catCls+'">'+catLabel+'</span></td>'
       + '<td>'+esc(c.contactName||'—')+'<div class="hint">'+esc(c.phone||'')+(c.phone&&c.email?' · ':'')+esc(c.email||'')+'</div></td>'
       + '<td>'+esc(sys)+'</td>'
-      + '<td>'+esc(c.proposalNumber||'—')+'<div class="hint">'+(c.contractStart?('início '+fmtDate(c.contractStart)):'')+'</div>'+(isManut ? '<div class="hint">'+(hasClientValue(c) ? fmtMoney(clientMonthlyValue(c, todayISO().slice(0,7)))+'/mês'+(clientPoints(c).length ? ' · '+clientPoints(c).length+' pontos' : '') : '<span style="color:var(--warn);">sem valor mensal</span>')+'</div>' : '')+'</td>'
+      + '<td>'+(function(){ var k = (typeof contratoDoCliente==='function') ? contratoDoCliente(c) : null;
+          if(!k) return esc(c.proposalNumber||'—');
+          return '<strong>'+esc(k.numero)+'</strong> REV'+String(Number(k.revisao)||0).padStart(2,'0')
+            + ((k.numeroAnterior && !k.renumeracaoRegistrada) ? '<div class="hint">antes '+esc(k.numeroAnterior)+' — número novo vale a partir das cartas</div>' : ''); })()+'<div class="hint">'+(c.contractStart?('início '+fmtDate(c.contractStart)):'')+'</div>'+(isManut ? '<div class="hint">'+(hasClientValue(c) ? fmtMoney(clientMonthlyValue(c, todayISO().slice(0,7)))+'/mês'+(clientPoints(c).length ? ' · '+clientPoints(c).length+' pontos' : '') : '<span style="color:var(--warn);">sem valor mensal</span>')+'</div>' : '')+'</td>'
       + '<td>'+(isManut ? '<span class="pill '+ms.cls+'">'+ms.label+'</span>' : '<span class="hint">—</span>')+'</td>'
       + '<td>'+(isManut ? '<span class="pill '+as_.cls+'">'+as_.label+'</span>' : '<span class="hint">—</span>')+'</td>'
       + '<td><button class="btn small edit-client" data-id="'+c.id+'">Editar</button></td>'
@@ -3084,6 +3087,14 @@ function cartaRevisaoInfo(c, novo){
     if(!k.areaClienteRegistrada) itens.push('Inclusão da Área do Cliente (aplicativo P&M), com acesso individual por login e senha');
   }
   return { k: k, numero: k.numero, rev: rev, revTxt: String(rev).padStart(2,'0'), itens: itens, jaRegistrada: !!ja, renumerou: !!(k.numeroAnterior && !k.renumeracaoRegistrada) };
+}
+// Número do contrato para documentos do cliente (relatório de visita): enquanto a renumeração não foi
+// registrada (cartas enviadas), vale o número que o cliente assinou; depois, o número novo.
+function contratoNumeroCliente(c){
+  var k = (typeof contratoDoCliente==='function' && c) ? contratoDoCliente(c) : null;
+  if(!k) return (c && c.proposalNumber) || '';
+  var rev = ' REV'+String(Number(k.revisao)||0).padStart(2,'0');
+  return ((k.numeroAnterior && !k.renumeracaoRegistrada) ? k.numeroAnterior : k.numero) + rev;
 }
 function proximoReajuste(){ return futureReajustes()[0] || null; }
 // Parâmetros para gerar o contrato de um cliente que JÁ tem contrato: mesmo número, revisão nova,
@@ -5153,7 +5164,7 @@ function renderTalaoEditor(){
         + '<div><span>Endereço</span>'+esc(end.linha1)+'</div>'
         + '<div><span>Município</span>'+esc(end.linha2||'—')+'</div>'
         + '<div><span>Telefone</span>'+esc((c&&c.phone)||'—')+'</div>'
-        + '<div><span>Contrato / Proposta Nº</span>'+esc((c&&c.proposalNumber)||'—')+'</div>'
+        + '<div><span>Contrato / Proposta Nº</span>'+esc(contratoNumeroCliente(c)||'—')+'</div>'
       + '</div>'
       + '<div class="hint" style="margin:4px 0 10px;">Vem do cadastro do cliente — para corrigir, edite o cliente.</div>'
       + '<div class="grid2">'
@@ -5306,7 +5317,7 @@ function buildVisitReportHTML(v){
   var html = docWatermarkHTML() + companyHeaderHTML()
     + '<p class="doc-title">Relatório Técnico de Visita</p>'
     + '<table style="width:100%;border-collapse:collapse;font-size:12.5px;margin:0 0 14px;">'
-      + row('Cliente', esc(c.name||'—')+(v.pointName ? ' — <strong>'+esc(v.pointName)+'</strong>' : ''), 'Contrato Nº', esc(c.proposalNumber||'—'))
+      + row('Cliente', esc(c.name||'—')+(v.pointName ? ' — <strong>'+esc(v.pointName)+'</strong>' : ''), 'Contrato Nº', esc(contratoNumeroCliente(c)||'—'))
       + row('Endereço', esc(end.linha1)+(end.linha2 ? ' — '+esc(end.linha2) : ''))
       + row('Data', esc(dataExtensoPT(v.date))+(horario ? ', '+esc(horario) : ''), 'OS Nº', esc(t.osNumber||'—'))
       + row('Tipo de visita', esc(tlLabel(TALAO_TIPOS, t.visitType)||'—'), 'Responsável', esc(t.responsavelLocal||'—'))
@@ -5315,7 +5326,7 @@ function buildVisitReportHTML(v){
   html += '<h4>1. Objetivo</h4>'
     + P('Registrar a visita técnica '+tipo+' realizada em '+esc(dataExtensoPT(v.date))+(horario ? ', '+esc(horario) : '')
       + ', ao sistema de tratamento de água do cliente'+(v.pointName ? ' no ponto '+esc(v.pointName) : '')+(sistemas.length ? ' ('+esc(tlJoin(sistemas))+')' : '')
-      + ', para acompanhamento, verificação e manutenção dos equipamentos'+(c.proposalNumber ? ', conforme contrato Nº '+esc(c.proposalNumber) : ', conforme contrato de manutenção')+'.');
+      + ', para acompanhamento, verificação e manutenção dos equipamentos'+(contratoNumeroCliente(c) ? ', conforme contrato Nº '+esc(contratoNumeroCliente(c)) : ', conforme contrato de manutenção')+'.');
 
   // 2. Inspeção
   var grupos = { ok:[], ajuste:[], troca:[], na:[] };
