@@ -906,7 +906,7 @@ button.pt-card{cursor:pointer;}
     <!-- Demais abas (Manutenções, Análises, Orçamentos) temporariamente
          removidas da navegação a pedido do usuário, para isolar o problema de conexão com o banco.
          O código continua abaixo, intacto, para religarmos assim que resolvido. -->
-    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 02/11 19:14</span></div>
+    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 02/11 21:04</span></div>
   </nav>
   <main id="main">
     <div id="topbar">
@@ -3207,7 +3207,7 @@ function buildCartaReajusteHTML(c, novo, dataCarta, first){
           + '<tr><td style="'+b+'text-align:center;"><strong>Rev '+ri.revTxt+'</strong><br><span style="font-size:11px;">'+esc(MESES_PT[Number(novo.effectiveFrom.slice(5,7))-1].slice(0,3)+'/'+novo.effectiveFrom.slice(0,4))+'</span></td>'
           + '<td style="'+b+'">'+ri.itens.map(function(t){ return '• '+esc(t); }).join('<br>')+'</td></tr></table>'
           + '<p style="font-size:12px;color:#334155;margin-top:0;">'+(ri.renumerou ? 'A renumeração apenas organiza os contratos da P&amp;M em ordem cronológica. ' : '')
-            + 'O contrato revisado também atualiza o valor da visita extra, quando solicitada, para <strong>'+fmtMoney(novo.priceExtra)+'</strong> e alinha a lista de análises ao pacote praticado hoje com o laboratório.</p>';
+            + 'O contrato revisado também atualiza o valor da visita extra, quando solicitada, para <strong>'+fmtMoney(novo.priceExtra)+'</strong> e alinha as análises ao pacote praticado hoje com o laboratório, com 3 coletas por ano (fevereiro, junho e outubro).</p>';
       })()
     + '<div>'
     + '<div>'
@@ -3809,27 +3809,42 @@ function buildManutencaoProposalHTML(client, params, materiais){
       + '<div style="font-size:12.5px;color:#334155;">Nº <strong>'+esc(params.contractNumber||'—')+'</strong> &nbsp;·&nbsp; Revisão '+rev+' &nbsp;·&nbsp; '+esc(COMPANY.city)+', '+dataExtensoPT(params.contractDate)+'</div>'
     + '</div>'
     // partes
-    + '<table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:10px;"><tr>'
-      + '<td style="'+td+'width:55%;">'+lbl('Contratante')+'<strong>'+esc(client.name||'—')+'</strong><br>CPF/CNPJ '+esc(client.cpfCnpj||'—')+'<br>'+esc(end.linha1)+'<br>'+esc(end.linha2||'—')+(client.contactName?'<br>A/C de '+esc(client.contactName):'')+'</td>'
-      + '<td style="'+td+'">'+lbl('Contratada')+'<strong>P&amp;M Soluções em Água</strong><br>CNPJ '+esc(COMPANY.cnpj)+'<br>Resp. técnico: '+esc(COMPANY.signer)+'<br>'+esc(COMPANY.signerTitle)+' · '+esc(COMPANY.signerCRQ)+'<br>'+esc(COMPANY.phone)+' · '+esc(COMPANY.email)+'</td>'
-    + '</tr></table>'
+    + (function(){
+        var docTxt = String(client.cpfCnpj||'').trim(), dig = docTxt.replace(/\D/g,'');
+        var docLbl = dig.length===11 ? 'CPF' : (dig.length===14 ? 'CNPJ' : 'CPF/CNPJ');
+        var linha = function(rot, corpo, ult){
+          return '<tr><td style="width:96px;padding:9px 12px 9px 0;vertical-align:top;'+(ult?'':'border-bottom:1px solid '+LINE+';')+'"><span style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:'+BLUE+';font-weight:800;">'+rot+'</span></td>'
+            + '<td style="padding:9px 0;vertical-align:top;line-height:1.5;color:#334155;'+(ult?'':'border-bottom:1px solid '+LINE+';')+'">'+corpo+'</td></tr>';
+        };
+        var sep = ' <span style="color:#9AA8B8;">·</span> ';
+        var contratante = '<strong style="color:'+NAVY+';font-size:13px;">'+esc(client.name||'—')+'</strong>'+(docTxt ? sep+docLbl+' '+esc(docTxt) : '')
+          + '<br>'+esc(end.linha1)+(end.linha2 ? sep+esc(end.linha2) : '')
+          + (client.contactName ? '<br>A/C de '+esc(client.contactName) : '');
+        var contratada = '<strong style="color:'+NAVY+';font-size:13px;">P&amp;M Soluções em Água</strong>'+sep+'CNPJ '+esc(COMPANY.cnpj)
+          + '<br>Resp. técnico: '+esc(COMPANY.signer)+sep+esc(COMPANY.signerTitle)+', '+esc(COMPANY.signerCRQ)
+          + '<br>'+esc(COMPANY.phone)+sep+esc(COMPANY.email);
+        return '<table style="width:100%;border-collapse:collapse;font-size:12.5px;margin:0 0 12px;border-top:2px solid '+BLUE+';">'
+          + linha('Contratante', contratante) + linha('Contratada', contratada, true) + '</table>';
+      })()
     // condições principais
-    + '<table style="width:100%;border-collapse:collapse;margin-bottom:6px;background:'+SOFT+';"><tr>'
-      + termo('Valor mensal', fmtMoney(custoMensal), pontos ? 'soma de '+pontos.length+' pontos, 1 boleto' : 'boleto bancário')
-      + termo('Vencimento', 'Todo dia '+esc(params.dueDay||10), 'de cada mês')
-      + termo('Vigência', esc(params.termMonths||12)+' meses', 'renovação anual')
-    + '</tr><tr>'
-      + termo('Visitas técnicas', nVis+' por mês', pontos ? '1 em cada ponto' : 'manutenção preventiva')
-      + termo('Análises de laboratório', 'Quadrimestrais', pontos ? 'coleta em cada ponto' : 'laboratório credenciado')
-      + termo('Visita extra', fmtMoney(precoExtra), 'por visita solicitada')
-    + '</tr></table>'
+    + (function(){
+        var cs = function(html, n){ return html.replace('<td ', '<td colspan="'+n+'" ').replace(/width:33\.3%;?/, ''); };
+        return '<table style="width:100%;border-collapse:collapse;table-layout:fixed;margin:0 0 6px;background:'+SOFT+';"><colgroup>'+'<col style="width:16.66%">'.repeat(6)+'</colgroup><tr>'
+          + cs(termo('Valor mensal', fmtMoney(custoMensal), pontos ? 'soma de '+pontos.length+' pontos, 1 boleto' : 'boleto bancário'), 2)
+          + cs(termo('Vencimento', 'Todo dia '+esc(params.dueDay||10), 'de cada mês'), 2)
+          + cs(termo('Vigência', esc(params.termMonths||12)+' meses', 'renovação anual'), 2)
+          + '</tr><tr>'
+          + cs(termo('Visitas técnicas', 'Mensal', (nVis>1 ? visitasLabel(nVis)+' por mês' + (pontos ? ' · 1 em cada ponto' : '') : 'manutenção preventiva')), 3)
+          + cs(termo('Análises laboratoriais', 'Quadrimestrais', 'fev · jun · out'+(pontos ? ' · em cada ponto' : '')), 3)
+          + '</tr></table>';
+      })()
     + (pontos ? '<div style="margin-top:12px;"><p style="margin:0 0 6px;font-weight:800;color:'+NAVY+';font-size:13px;">PONTOS DE ATENDIMENTO</p>'
         + '<table style="width:100%;border-collapse:collapse;font-size:12px;"><tr><th style="'+td+'text-align:left;background:'+SOFT+';">Ponto</th><th style="'+td+'text-align:left;background:'+SOFT+';">Local / Endereço</th><th style="'+td+'text-align:left;background:'+SOFT+';">Sistema instalado</th><th style="'+td+'text-align:right;background:'+SOFT+';">Valor mensal</th></tr>'
         + pontos.map(function(x, i){ return '<tr><td style="'+td+'"><strong>Ponto '+(i+1)+'</strong> – '+esc(x.nome)+'</td><td style="'+td+'">'+esc(x.endereco||'')+'</td><td style="'+td+'">'+esc(x.sistema||'')+'</td><td style="'+td+'text-align:right;">'+fmtMoney(x.valor)+'</td></tr>'; }).join('')
         + '<tr><td colspan="3" style="'+td+'"><strong>Total mensal</strong></td><td style="'+td+'text-align:right;"><strong>'+fmtMoney(custoMensal)+'</strong></td></tr></table></div>' : '')
     // cláusulas
     + clausula('1', 'OBJETO',
-        '<p style="margin:0;text-align:justify;">O presente contrato tem por objetivo estabelecer condições técnicas e comerciais para acompanhamento e manutenção de sistema convencional de tratamento de água'+(pontos ? ' nos pontos de atendimento relacionados acima' : '')+', a fim de assegurar a qualidade microbiológica e físico-química da água servida para as dependências do referido imóvel, de acordo com a Portaria GM/MS Nº 888, de 04 de maio de 2021, do Ministério da Saúde.</p>'
+        '<p style="margin:0;text-align:justify;">O presente contrato tem por objetivo estabelecer condições técnicas e comerciais para acompanhamento e manutenção de sistema convencional de tratamento de água'+(pontos ? ' nos pontos de atendimento relacionados acima' : '')+', como apoio técnico ao contratante no controle da qualidade microbiológica e físico-química da água servida às dependências do referido imóvel, observando a Portaria GM/MS Nº 888, de 04 de maio de 2021, do Ministério da Saúde.</p>'
         + '<div style="border-left:3px solid '+LINE+';padding:4px 0 4px 10px;margin-top:8px;font-size:12px;color:#334155;">Art. 13. Compete ao responsável pelo sistema ou solução alternativa coletiva de abastecimento de água para consumo humano: I - Exercer o controle da qualidade da água. <em>(PRT GM/MS Nº 888/2021)</em></div>')
     + clausula('2', 'SERVIÇOS INCLUÍDOS',
         '<p style="margin:0;">A contratada, P&amp;M Soluções, representada por '+esc(COMPANY.signer)+', compromete-se a:</p>'
@@ -3838,32 +3853,41 @@ function buildManutencaoProposalHTML(client, params, materiais){
                    : 'Realizar '+visitasLabel(nVis)+' por mês, verificando as condições do sistema e realizando, se necessário, a compra/análise/troca/reposição da solução de hipoclorito de sódio, retirada de ar da bomba e troca de mangueiras.',
             'Realizar a manutenção preventiva e limpeza de todo o sistema'+(pontos ? ' de cada ponto' : '')+'.',
             'Fornecer os kits de reagentes para verificação do teor de cloro no sistema.',
-            'Reparar e trocar válvulas.'
+            'Reparar e, quando necessário, trocar válvulas, mangueiras e componentes do sistema — a mão de obra está incluída; o material novo é cobrado à parte (Cláusula 7).'
           ].concat((params.servicosExtras||[]).map(esc))))
     + clausula('3', 'PLANO DE AMOSTRAGEM E ANÁLISES',
         ul([
-          'Apresentar plano de amostragem de acordo com a legislação vigente e cumpri-lo como acordado neste contrato.',
-          'Realizar, quadrimestralmente, a coleta de amostras'+(pontos ? ' <strong>em cada ponto de atendimento ('+esc(pontosNomes)+')</strong>' : '')+' e, por meio de laboratório subcontratado e credenciado, fornecer um conjunto de análises físico-químicas e microbiológicas'+(pontos ? ' para cada ponto' : '')+'.',
-          'Análises executadas na água após o tratamento'+(pontos ? ', em cada ponto' : '')+': <strong>'+esc(analises)+'</strong>.'
+          'O plano de amostragem contratado compreende <strong>3 (três) coletas por ano</strong>, realizadas quadrimestralmente nos meses de <strong>fevereiro, junho e outubro</strong>, durante a visita técnica do mês'+(pontos ? ', <strong>em cada ponto de atendimento ('+esc(pontosNomes)+')</strong>' : '')+'. Se a visita do mês não ocorrer, a coleta será feita na visita seguinte.',
+          'As amostras são encaminhadas a laboratório subcontratado e credenciado, que emite os laudos das análises físico-químicas e microbiológicas da água após o tratamento'+(pontos ? ', de cada ponto' : '')+': <strong>'+esc(analises)+'</strong>. Os laudos ficam disponíveis na Área do Cliente.',
+          'Os resultados representam a água no ponto e no momento da coleta.',
+          'Análises adicionais — exigidas pela legislação, pela vigilância sanitária ou recoletas após resultado fora do padrão — não estão incluídas no valor mensal e podem ser contratadas à parte.'
         ]))
-    + clausula('4', 'VISITAS PERIÓDICAS',
+    + clausula('4', 'RESPONSABILIDADES DO CONTRATANTE',
+        ul([
+          'Como responsável pela solução de abastecimento do imóvel (art. 13 da Portaria GM/MS Nº 888/2021), cabe ao contratante o controle da qualidade da água, incluindo o plano de amostragem eventualmente exigido pela legislação ou pela vigilância sanitária além do contratado na Cláusula 3.',
+          'Cabe ao contratante a limpeza e a conservação dos reservatórios e da tubulação, a operação diária do sistema, o fornecimento de energia elétrica e o acesso da contratada aos equipamentos nas datas das visitas.',
+          'A contratada comunicará ao contratante qualquer resultado fora do padrão ou anomalia observada, com as recomendações técnicas cabíveis; a adoção das medidas corretivas é decisão e responsabilidade do contratante.',
+          'A contratada não responde por alterações na qualidade da água decorrentes de fatores fora do seu controle, como contaminação do manancial, falta de energia, intervenção de terceiros no sistema, falta de limpeza dos reservatórios ou não adoção das recomendações técnicas.'
+        ]))
+    + clausula('5', 'VISITAS PERIÓDICAS',
         '<p style="margin:0;text-align:justify;">As visitas ocorrerão mensalmente, de acordo com a necessidade do cliente, desde que alinhadas com a disponibilidade da contratada. Solicitações urgentes poderão ser aceitas, havendo disponibilidade, com atendimento em até 24h da solicitação.</p>'
         + '<p style="margin:6px 0 0;text-align:justify;">O controle das visitas se dará por documento elaborado pela contratada que comprove o acompanhamento técnico para efeito de quaisquer fiscalizações, em duas vias, assinado pela contratada e por um representante do contratante a cada visita periódica ou extra.</p>')
-    + clausula('5', 'VISITAS EXTRAS',
-        '<p style="margin:0;text-align:justify;">Visitas extras poderão ser solicitadas'+(params.autorizacaoExtra ? ' mediante autorização por escrito do contratante' : '')+' e atendidas, havendo disponibilidade da contratada, com prazo de até 24h. Será cobrado o valor de <strong>'+fmtMoney(precoExtra)+' ('+moedaPorExtenso(precoExtra)+')</strong> por visita extra solicitada'+(pontos ? ', em qualquer um dos pontos de atendimento' : '')+', acertado junto do vencimento mensal deste contrato. O valor não inclui materiais utilizados.</p>')
-    + clausula('6', 'O QUE NÃO ESTÁ INCLUSO',
+    + clausula('6', 'VISITAS EXTRAS',
+        '<p style="margin:0;text-align:justify;">Visitas extras, além da visita mensal programada, poderão ser solicitadas pelo contratante'+(params.autorizacaoExtra ? ', mediante autorização por escrito,' : '')+' (inclusive pela Área do Cliente) e serão atendidas conforme a disponibilidade da contratada, em até 24h. Cada visita extra tem o valor de <strong>'+fmtMoney(precoExtra)+' ('+moedaPorExtenso(precoExtra)+')</strong>'+(pontos ? ', em qualquer um dos pontos de atendimento' : '')+', cobrado junto do vencimento mensal deste contrato. Esse valor corresponde ao deslocamento e à mão de obra da visita e não inclui materiais.</p>'
+        + '<p style="margin:6px 0 0;text-align:justify;">Havendo necessidade de substituição de peças ou componentes de maior complexidade, estes poderão ter custos adicionais, que serão informados previamente ao contratante e somente executados após a sua aprovação.</p>')
+    + clausula('7', 'O QUE NÃO ESTÁ INCLUSO',
         '<p style="margin:0;text-align:justify;">Pequenos reparos poderão, ou não, de acordo com sua complexidade, estar inclusos, visto que não são o objeto principal deste contrato. Havendo necessidade de emprego de novo material, este não estará, em hipótese alguma, incluso.</p>')
-    + clausula('7', 'ÁREA DO CLIENTE (APLICATIVO P&amp;M)',
+    + clausula('8', 'ÁREA DO CLIENTE (APLICATIVO P&amp;M)',
         '<p style="margin:0;text-align:justify;">O contratante terá acesso, sem custo adicional, à Área do Cliente da P&amp;M — aplicativo para celular e computador, com login e senha individuais —, onde poderá consultar os relatórios de cada visita, os laudos de análise do laboratório, o acompanhamento da qualidade da água (cloro, pH e temperatura) e este contrato com suas revisões, além de solicitar visitas extras e informar ocorrências. O acesso é individual: cada responsável indicado pelo contratante recebe login e senha próprios, pessoais e intransferíveis, que não devem ser compartilhados. A inclusão de novos responsáveis, a troca ou a remoção de acessos deve ser solicitada pelo contratante à P&amp;M, por escrito (WhatsApp ou e-mail); a P&amp;M não cria acessos por pedido de terceiros. Cabe ao contratante avisar a P&amp;M quando um responsável deixar de representá-lo, para que o acesso seja removido, respondendo pelo uso dos acessos que indicou até essa comunicação.</p>')
-    + clausula('8', 'VIGÊNCIA, RENOVAÇÃO E CANCELAMENTO',
+    + clausula('9', 'VIGÊNCIA, RENOVAÇÃO E CANCELAMENTO',
         '<p style="margin:0;text-align:justify;">Este contrato terá vigência de '+esc(params.termMonths||12)+' meses, sendo renovado anualmente, e poderá ser cancelado a qualquer momento por qualquer das partes, bastando comunicação prévia. <strong>Não haverá taxas adicionais e/ou multas em caso de cancelamento.</strong> Na renovação poderão ocorrer variação de valores e revisão de serviços.</p>')
-    + clausula('9', 'VALOR E PAGAMENTO',
+    + clausula('10', 'VALOR E PAGAMENTO',
         '<p style="margin:0;text-align:justify;">Os serviços deste contrato terão custo mensal'+(pontos ? ' total' : '')+' de <strong>'+fmtMoney(custoMensal)+' ('+moedaPorExtenso(custoMensal)+')</strong>'
           + (pontos ? ', correspondente à soma dos pontos de atendimento: '+pontos.map(function(x, i){ return 'Ponto '+(i+1)+' – '+esc(x.nome)+': '+fmtMoney(x.valor); }).join('; ')+'. Os pontos são cobrados em um único boleto mensal' : '')
           + '. O pagamento se dará por boleto bancário com vencimento <strong>todo dia '+esc(params.dueDay||10)+' de cada mês</strong>. Após o vencimento, haverá cobrança de multa e juros previstos em lei, conforme o Código Tributário Nacional e o Código de Defesa do Consumidor.</p>'
           + (pontos ? '<p style="margin:6px 0 0;">A inclusão, retirada ou alteração de pontos de atendimento, bem como de seus valores, será formalizada por revisão deste contrato.</p>' : '')
           + materiaisHTML)
-    + (params.direitoImagem ? clausula('10', 'DIREITO DE IMAGEM',
+    + (params.direitoImagem ? clausula('11', 'DIREITO DE IMAGEM',
         '<p style="margin:0;text-align:justify;">Com o intuito de divulgar um trabalho sério, ético e técnico, a contratada poderá divulgar fotos e imagens dos serviços prestados, sempre com responsabilidade e respeito ao contratante. Marque abaixo a sua opção:</p>'
         + '<p style="margin:8px 0 0;">(&nbsp;&nbsp;&nbsp;) Estou de acordo com a divulgação &nbsp;&nbsp;&nbsp;&nbsp; (&nbsp;&nbsp;&nbsp;) Não estou de acordo com a divulgação</p>') : '')
     // aceite e assinaturas
@@ -5013,6 +5037,25 @@ var TALAO_STATUS_CLS = { normal:'ok', inoperante:'danger', restricoes:'yellow', 
 var manutView = { mode:'list', id:null, clientFilter:'' };
 var manutDirty = true;
 var manutCollapsed = {}; // meses abertos/recolhidos pelo usuário nesta sessão (padrão: só o mês atual aberto)
+var MESES_COLETA = [2, 6, 10]; // plano do contrato: 3 coletas por ano
+function coletaPrevistaMsg(clientId, dateISO, exceptId, pointId){
+  if(!clientId || !dateISO) return '';
+  var c = state.clients.find(function(x){ return x.id===clientId; });
+  if(!c || clientCategoryOf(c)!=='manutencao') return '';
+  var ym = dateISO.slice(0,7), m = Number(dateISO.slice(5,7));
+  var feitas = state.visits.filter(function(x){ return x.clientId===clientId && x.id!==exceptId && (!pointId || !x.pointId || x.pointId===pointId)
+    && x.talao && x.talao.analises && x.talao.analises.coleta==='sim' && x.date && x.date < dateISO; })
+    .map(function(x){ return x.date; }).sort();
+  var ultima = feitas[feitas.length-1] || '';
+  if(ultima && ultima.slice(0,7)===ym) return '';
+  var nomes = ['','janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+  if(MESES_COLETA.indexOf(m) > -1) return 'Mês de coleta pelo contrato ('+nomes[m]+'). Faça a coleta nesta visita.';
+  if(ultima){
+    var meses = (Number(dateISO.slice(0,4))-Number(ultima.slice(0,4)))*12 + m - Number(ultima.slice(5,7));
+    if(meses >= 5) return 'Coleta atrasada: a última foi em '+fmtDate(ultima)+'. Faça a coleta nesta visita.';
+  }
+  return '';
+}
 function openVisitModal(id){ openTalao(id || null); } // nome antigo, usado pelo Painel
 function openTalao(id, presetClientId, opts){
   opts = opts || {};
@@ -5339,7 +5382,7 @@ function renderTalaoEditor(){
       + '<div class="grid2">'
         + '<div class="field"><label>Coleta de amostras</label><div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;">'+radio('tl-coleta', [['sim','Sim'],['nao','Não']], an.coleta||'')
           + '<div id="tl-frasco-wrap" style="display:'+(an.coleta==='sim'?'block':'none')+';"><input type="text" id="tl-frasco" inputmode="numeric" maxlength="4" value="'+esc(an.numeroFrasco||'')+'" placeholder="Nº frasco" style="width:120px;font-size:17px;font-weight:700;text-align:center;letter-spacing:.06em;">'
-          + '<div class="hint" id="tl-frasco-hint" style="margin-top:3px;"></div></div></div></div>'
+          + '<div class="hint" id="tl-frasco-hint" style="margin-top:3px;"></div></div></div><div class="hint" id="tl-coleta-prev" style="margin-top:4px;"></div></div>'
         + '<div class="field"><label>Local da coleta</label><input type="text" id="tl-coleta-local" value="'+esc(an.localColeta||'')+'" placeholder="Ex.: torneira da cozinha"></div>'
       + '</div>'
       + '<div class="grid2">'
@@ -5397,6 +5440,17 @@ function renderTalaoEditor(){
     inp.addEventListener('blur', function(){ if(this.value) this.value = tlFrascoFmt(this.value); atualiza(); });
     if($('#tl-date')) $('#tl-date').addEventListener('change', atualiza);
     atualiza();
+    // aviso do plano de coletas do contrato (fevereiro, junho e outubro)
+    var prevEl = $('#tl-coleta-prev');
+    function prevista(){
+      if(!prevEl) return;
+      var msg = coletaPrevistaMsg($('#tl-client').value, $('#tl-date').value || todayISO(), v ? v.id : null, $('#tl-point') ? $('#tl-point').value : '');
+      var marcado = radioVal('tl-coleta');
+      prevEl.innerHTML = msg && marcado!=='sim' ? '<span style="display:inline-block;background:#FFF4D6;border:1px solid #E7C77A;color:#6B4E00;border-radius:6px;padding:4px 8px;font-weight:600;">⚑ '+esc(msg)+'</span>' : '';
+    }
+    $all('input[name="tl-coleta"]').forEach(function(r){ r.addEventListener('change', prevista); });
+    if($('#tl-date')) $('#tl-date').addEventListener('change', prevista);
+    prevista();
   }
   function tlSignBox(){
     var box = $('#tl-sign-box'); if(!box) return;
