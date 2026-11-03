@@ -906,7 +906,7 @@ button.pt-card{cursor:pointer;}
     <!-- Demais abas (Manutenções, Análises, Orçamentos) temporariamente
          removidas da navegação a pedido do usuário, para isolar o problema de conexão com o banco.
          O código continua abaixo, intacto, para religarmos assim que resolvido. -->
-    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 02/11 21:04</span></div>
+    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 02/11 21:37</span></div>
   </nav>
   <main id="main">
     <div id="topbar">
@@ -3849,8 +3849,9 @@ function buildManutencaoProposalHTML(client, params, materiais){
     + clausula('2', 'SERVIÇOS INCLUÍDOS',
         '<p style="margin:0;">A contratada, P&amp;M Soluções, representada por '+esc(COMPANY.signer)+', compromete-se a:</p>'
         + ul([
-            pontos ? 'Realizar uma visita técnica por mês <strong>em cada ponto de atendimento</strong> ('+visitasLabel(nVis)+' por mês no total), verificando as condições do sistema e realizando, se necessário, a compra/análise/troca/reposição da solução de hipoclorito de sódio, retirada de ar da bomba e troca de mangueiras.'
-                   : 'Realizar '+visitasLabel(nVis)+' por mês, verificando as condições do sistema e realizando, se necessário, a compra/análise/troca/reposição da solução de hipoclorito de sódio, retirada de ar da bomba e troca de mangueiras.',
+            pontos ? 'Realizar uma visita técnica por mês <strong>em cada ponto de atendimento</strong> ('+visitasLabel(nVis)+' por mês no total), verificando as condições do sistema e realizando, se necessário, a reposição da solução de hipoclorito de sódio, a retirada de ar da bomba e a troca de mangueiras.'
+                   : 'Realizar '+visitasLabel(nVis)+' por mês, verificando as condições do sistema e realizando, se necessário, a reposição da solução de hipoclorito de sódio, a retirada de ar da bomba e a troca de mangueiras.',
+            'Fornecer a solução de hipoclorito de sódio utilizada no sistema, <strong>incluída no valor mensal</strong>, em quantidade compatível com o consumo normal do imóvel. Aumento expressivo de consumo (por exemplo, por vazamento na tubulação ou nos reservatórios) será comunicado ao contratante.',
             'Realizar a manutenção preventiva e limpeza de todo o sistema'+(pontos ? ' de cada ponto' : '')+'.',
             'Fornecer os kits de reagentes para verificação do teor de cloro no sistema.',
             'Reparar e, quando necessário, trocar válvulas, mangueiras e componentes do sistema — a mão de obra está incluída; o material novo é cobrado à parte (Cláusula 7).'
@@ -3880,11 +3881,11 @@ function buildManutencaoProposalHTML(client, params, materiais){
     + clausula('8', 'ÁREA DO CLIENTE (APLICATIVO P&amp;M)',
         '<p style="margin:0;text-align:justify;">O contratante terá acesso, sem custo adicional, à Área do Cliente da P&amp;M — aplicativo para celular e computador, com login e senha individuais —, onde poderá consultar os relatórios de cada visita, os laudos de análise do laboratório, o acompanhamento da qualidade da água (cloro, pH e temperatura) e este contrato com suas revisões, além de solicitar visitas extras e informar ocorrências. O acesso é individual: cada responsável indicado pelo contratante recebe login e senha próprios, pessoais e intransferíveis, que não devem ser compartilhados. A inclusão de novos responsáveis, a troca ou a remoção de acessos deve ser solicitada pelo contratante à P&amp;M, por escrito (WhatsApp ou e-mail); a P&amp;M não cria acessos por pedido de terceiros. Cabe ao contratante avisar a P&amp;M quando um responsável deixar de representá-lo, para que o acesso seja removido, respondendo pelo uso dos acessos que indicou até essa comunicação.</p>')
     + clausula('9', 'VIGÊNCIA, RENOVAÇÃO E CANCELAMENTO',
-        '<p style="margin:0;text-align:justify;">Este contrato terá vigência de '+esc(params.termMonths||12)+' meses, sendo renovado anualmente, e poderá ser cancelado a qualquer momento por qualquer das partes, bastando comunicação prévia. <strong>Não haverá taxas adicionais e/ou multas em caso de cancelamento.</strong> Na renovação poderão ocorrer variação de valores e revisão de serviços.</p>')
+        '<p style="margin:0;text-align:justify;">Este contrato terá vigência de '+esc(params.termMonths||12)+' meses, sendo renovado anualmente, e poderá ser cancelado a qualquer momento por qualquer das partes, mediante <strong>comunicação por escrito com 30 (trinta) dias de antecedência</strong>. <strong>Não haverá taxas adicionais e/ou multas em caso de cancelamento.</strong> Na renovação poderão ocorrer variação de valores e revisão de serviços.</p>')
     + clausula('10', 'VALOR E PAGAMENTO',
         '<p style="margin:0;text-align:justify;">Os serviços deste contrato terão custo mensal'+(pontos ? ' total' : '')+' de <strong>'+fmtMoney(custoMensal)+' ('+moedaPorExtenso(custoMensal)+')</strong>'
           + (pontos ? ', correspondente à soma dos pontos de atendimento: '+pontos.map(function(x, i){ return 'Ponto '+(i+1)+' – '+esc(x.nome)+': '+fmtMoney(x.valor); }).join('; ')+'. Os pontos são cobrados em um único boleto mensal' : '')
-          + '. O pagamento se dará por boleto bancário com vencimento <strong>todo dia '+esc(params.dueDay||10)+' de cada mês</strong>. Após o vencimento, haverá cobrança de multa e juros previstos em lei, conforme o Código Tributário Nacional e o Código de Defesa do Consumidor.</p>'
+          + '. O pagamento se dará por boleto bancário com vencimento <strong>todo dia '+esc(params.dueDay||10)+' de cada mês</strong>. Após o vencimento, incidirão <strong>multa de 2% (dois por cento)</strong> sobre o valor em atraso e <strong>juros de mora de 1% (um por cento) ao mês</strong>, calculados proporcionalmente aos dias de atraso.</p>'
           + (pontos ? '<p style="margin:6px 0 0;">A inclusão, retirada ou alteração de pontos de atendimento, bem como de seus valores, será formalizada por revisão deste contrato.</p>' : '')
           + materiaisHTML)
     + (params.direitoImagem ? clausula('11', 'DIREITO DE IMAGEM',
@@ -3896,7 +3897,7 @@ function buildManutencaoProposalHTML(client, params, materiais){
       + '<p style="margin:0;text-align:justify;">As partes declaram estar cientes e de acordo com as condições técnicas e comerciais do Contrato Nº '+esc(params.contractNumber||'—')+'.</p>'
       + '<p style="margin:14px 0 0;">'+esc(COMPANY.city)+', ______ de ____________________ de '+String(params.contractDate||todayISO()).slice(0,4)+'.</p>'
       + '<table style="width:100%;border-collapse:collapse;margin-top:46px;font-size:12px;"><tr>'
-        + '<td style="width:48%;text-align:center;vertical-align:top;border-top:1px solid #1a1a1a;padding-top:6px;"><strong>CONTRATANTE</strong><br>'+esc(client.name||'')+'<br>CPF/CNPJ '+esc(client.cpfCnpj||'—')+'</td>'
+        + '<td style="width:48%;text-align:center;vertical-align:top;border-top:1px solid #1a1a1a;padding-top:6px;"><strong>CONTRATANTE</strong><br>'+esc(client.name||'')+'<br>'+(function(){ var dg = String(client.cpfCnpj||'').replace(/\D/g,''); return dg.length===11 ? 'CPF' : (dg.length===14 ? 'CNPJ' : 'CPF/CNPJ'); })()+' '+esc(client.cpfCnpj||'—')+'</td>'
         + '<td style="width:4%;"></td>'
         + '<td style="width:48%;text-align:center;vertical-align:top;border-top:1px solid #1a1a1a;padding-top:6px;"><strong>CONTRATADA</strong><br>'+esc(COMPANY.signer)+'<br>'+esc(COMPANY.signerTitle)+' · '+esc(COMPANY.signerCRQ)+'</td>'
       + '</tr></table>'
