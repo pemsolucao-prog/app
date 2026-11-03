@@ -906,7 +906,7 @@ button.pt-card{cursor:pointer;}
     <!-- Demais abas (Manutenções, Análises, Orçamentos) temporariamente
          removidas da navegação a pedido do usuário, para isolar o problema de conexão com o banco.
          O código continua abaixo, intacto, para religarmos assim que resolvido. -->
-    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 02/11 21:49</span></div>
+    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 02/11 22:03</span></div>
   </nav>
   <main id="main">
     <div id="topbar">
@@ -2027,14 +2027,8 @@ function clientNextAnalysis(clientId){
   return null;
 }
 function analysisStatusFor(clientId){
-  var c = state.clients.find(function(x){return x.id===clientId;});
-  if(!c || !c.packageIds || !c.packageIds.length) return {label:'Sem pacote', cls:'neutral'};
-  var due = clientNextAnalysis(clientId);
-  if(!due) return {label:'Sem histórico', cls:'neutral'};
-  var diff = daysBetween(todayISO(), due);
-  if(diff < 0) return {label:'Atrasada há '+(-diff)+'d', cls:'danger'};
-  if(diff <= 14) return {label:'Em '+diff+'d', cls:'warn'};
-  return {label:fmtDate(due), cls:'ok'};
+  var st = planoColetaStatus(clientId);
+  return { label: st.label.replace('Em dia · próxima: ','Em dia · '), cls: st.cls };
 }
 function receivableStatus(r){
   if(r.status==='Pago') return {label:'Pago', cls:'ok'};
@@ -2209,8 +2203,8 @@ function renderScheduleList(dateIso, allChecked){
   };
   var rows = cands.map(function(c, i){
     var dup = state.visits.some(function(v){ return v.clientId===c.id && v.date===dateIso; });
-    var due = clientNextAnalysis(c.id);
-    var coletaSugerida = !!(due && due <= addDays(dateIso, 15));
+    var pc = planoColeta(c.id, dateIso);
+    var coletaSugerida = clientCategoryOf(c)==='manutencao' && (pc.situacao==='coletar' || pc.situacao==='atrasada');
     var checked = allChecked && !dup;
     return '<div class="sch-row" data-i="'+i+'" data-client="'+c.id+'">'
       + '<label class="sch-name"><input type="checkbox" class="sch-chk" '+(checked?'checked':'')+'> <span><strong>'+esc(c.name)+'</strong>'
@@ -2218,7 +2212,7 @@ function renderScheduleList(dateIso, allChecked){
         + (clientCategoryOf(c)==='extra' ? ' <span class="pill warn">cliente extra</span>' : '')
         + (clientPoints(c).length ? '<br><span class="hint">'+clientPoints(c).length+' pontos: '+esc(clientPoints(c).map(function(pt){ return pt.name; }).join(' e '))+' — uma visita para cada</span>' : '')
         + (dup ? '<br><span class="pill warn" style="margin-top:3px;">já tem visita neste dia</span>' : '')
-        + (coletaSugerida ? '<br><span class="hint">Análise do pacote vence em '+fmtDate(due)+' — coleta sugerida</span>' : '')
+        + (coletaSugerida ? '<br><span class="hint">'+(pc.situacao==='coletar' ? 'Mês de coleta do contrato ('+MESES_NOME[Number(pc.ciclo.slice(5,7))]+')' : 'Coleta de '+MESES_NOME[Number(pc.ciclo.slice(5,7))]+' ainda não registrada')+' — coleta sugerida</span>' : '')
       + '</span></label>'
       + '<div class="sch-ctrls">'
         + '<div><div class="sch-lbl">Técnico</div>'+seg('sch-tec-'+i, TECNICOS.map(function(tc){ return [tc.id, tc.curto]; }), TECNICO_PADRAO)+'</div>'
@@ -6836,21 +6830,49 @@ function clientLastReport(clientId){
   list.sort(function(a,b){ return (b.collectionDate||'').localeCompare(a.collectionDate||''); });
   return list[0] || null;
 }
-function clientNextReportDue(clientId){
-  var last = clientLastReport(clientId);
-  if(last && last.collectionDate) return addDays(last.collectionDate, ANALISE_INTERVALO_DIAS);
-  var c = state.clients.find(function(x){ return x.id===clientId; });
-  if(c && c.createdAt) return addDays(c.createdAt.slice(0,10), ANALISE_INTERVALO_DIAS);
-  return null;
+/* ---- Plano de coletas do contrato: 3 por ano, em fevereiro, junho e outubro ----
+   Cada mês de coleta abre um ciclo de 4 meses (fev–mai, jun–set, out–jan). Vale a coleta
+   feita em qualquer visita do ciclo (se a do mês não ocorrer, coleta-se na seguinte).
+   Conta como coleta: visita com "Coleta: Sim" ou laudo lançado com data de coleta. */
+var PLANO_COLETA_INICIO = '2026-10'; // primeiro ciclo acompanhado pelo app
+var MESES_NOME = ['','janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+function ymAdd(ym, n){ var y = Number(ym.slice(0,4)), m = Number(ym.slice(5,7)) - 1 + n; y += Math.floor(m/12); m = ((m%12)+12)%12; return y+'-'+String(m+1).padStart(2,'0'); }
+function ymNome(ym){ return MESES_NOME[Number(ym.slice(5,7))]+'/'+ym.slice(0,4); }
+function cicloColetaDe(ym){ for(var k=0;k<4;k++){ var x = ymAdd(ym,-k); if(MESES_COLETA.indexOf(Number(x.slice(5,7)))>-1) return x; } return null; }
+function proximoMesColeta(ym){ for(var k=1;k<=4;k++){ var x = ymAdd(ym,k); if(MESES_COLETA.indexOf(Number(x.slice(5,7)))>-1) return x; } return null; }
+function planoColeta(clientId, refISO){
+  refISO = refISO || todayISO();
+  var c = state.clients.find(function(x){ return x.id===clientId; }) || {};
+  var pts = (typeof clientPoints==='function') ? clientPoints(c) : [];
+  var reps = state.reports.filter(function(r){ return r.clientId===clientId && r.collectionDate; });
+  var vis = state.visits.filter(function(v){ return v.clientId===clientId && v.date && v.talao && v.talao.analises && v.talao.analises.coleta==='sim'; });
+  var datas = reps.map(function(r){ return r.collectionDate; }).concat(vis.map(function(v){ return v.date; })).filter(function(d){ return d <= refISO; }).sort();
+  var ym = refISO.slice(0,7), ciclo = cicloColetaDe(ym), prox = proximoMesColeta(ym);
+  var o = { ultima: datas[datas.length-1] || null, ciclo: null, proximo: prox, situacao: 'futuro' };
+  if(!ciclo || ciclo < PLANO_COLETA_INICIO){ o.proximo = (ciclo && ciclo >= PLANO_COLETA_INICIO) ? ciclo : (prox < PLANO_COLETA_INICIO ? PLANO_COLETA_INICIO : prox); return o; }
+  o.ciclo = ciclo;
+  var ini = ciclo+'-01';
+  var noCiclo = function(d){ return d >= ini && d <= refISO; };
+  var cobre = function(pid){ return function(x){ return !pts.length || !x.pointId || x.pointId===pid; }; };
+  var alvo = pts.length ? pts.map(function(p){ return p.id; }) : ['_'];
+  var coletados = alvo.filter(function(pid){ return vis.some(function(v){ return noCiclo(v.date) && cobre(pid)(v); }) || reps.some(function(r){ return noCiclo(r.collectionDate) && cobre(pid)(r); }); });
+  var comLaudo = alvo.filter(function(pid){ return reps.some(function(r){ return noCiclo(r.collectionDate) && cobre(pid)(r); }); });
+  o.pontos = pts.length; o.pontosColetados = pts.length ? coletados.length : null;
+  if(coletados.length === alvo.length) o.situacao = comLaudo.length === alvo.length ? 'emdia' : 'laudo';
+  else o.situacao = (ym === ciclo) ? 'coletar' : 'atrasada';
+  return o;
 }
-function reportStatusFor(clientId){
-  var due = clientNextReportDue(clientId);
-  if(!due) return {label:'Sem coleta registrada', cls:'neutral'};
-  var diff = daysBetween(todayISO(), due);
-  if(diff < 0) return {label:'Atrasada há '+(-diff)+'d', cls:'danger'};
-  if(diff <= 14) return {label:'Em '+diff+'d', cls:'warn'};
-  return {label:'Próxima: '+fmtDate(due), cls:'ok'};
+function planoColetaStatus(clientId, refISO){
+  var o = planoColeta(clientId, refISO), mesC = o.ciclo ? MESES_NOME[Number(o.ciclo.slice(5,7))] : '';
+  var parc = (o.pontos && o.pontosColetados) ? ' ('+o.pontosColetados+' de '+o.pontos+' pontos)' : '';
+  if(o.situacao==='emdia')    return { label:'Em dia · próxima: '+ymNome(o.proximo), cls:'ok', o:o };
+  if(o.situacao==='laudo')    return { label:'Coletada · aguardando laudo de '+mesC, cls:'warn', o:o };
+  if(o.situacao==='coletar')  return { label:'Coletar este mês ('+mesC+')'+parc, cls:'warn', o:o };
+  if(o.situacao==='atrasada') return { label:'Coleta de '+mesC+' não registrada'+parc, cls:'danger', o:o };
+  return { label:'Próxima: '+ymNome(o.proximo), cls:'ok', o:o };
 }
+function reportStatusFor(clientId){ return planoColetaStatus(clientId); }
+function clientNextReportDue(clientId){ var o = planoColeta(clientId); return o.proximo ? o.proximo+'-01' : null; }
 var reportClientFilter = 'todos';
 
 function renderRelatorios(){
@@ -7651,13 +7673,14 @@ function laudoFileName(r){
 function renderRelatorios(){
   var manutClients = state.clients.filter(function(c){ return isActiveClient(c) && clientCategoryOf(c)==='manutencao'; })
     .slice().sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
-  var html = '<div class="panel" style="margin-bottom:20px;"><div class="panel-head"><h2>Status de coleta por cliente</h2></div>';
+  var html = '<div class="panel" style="margin-bottom:20px;"><div class="panel-head" style="flex-wrap:wrap;gap:8px;"><h2>Status de coleta por cliente</h2><span class="hint">Plano do contrato: 3 coletas por ano — <strong>fevereiro, junho e outubro</strong></span></div>';
   if(!manutClients.length) html += '<div class="empty">Nenhum cliente ativo de manutenção cadastrado ainda.</div></div>';
   else {
     html += '<div class="tablewrap"><table><thead><tr><th>Cliente</th><th>Última coleta</th><th>Último resultado</th><th>Laudos</th><th>Situação</th></tr></thead><tbody>';
     manutClients.forEach(function(c){
       var last = clientLastReport(c.id), count = state.reports.filter(function(r){ return r.clientId===c.id; }).length, st = reportStatusFor(c.id);
-      html += '<tr><td>'+esc(c.name)+'</td><td class="mono">'+(last?fmtDate(last.collectionDate):'—')+'</td><td>'+(last?laudoSelo(last):'—')+'</td><td class="mono">'+count+'</td>'
+      var ult = st.o && st.o.ultima;
+      html += '<tr><td>'+esc(c.name)+'</td><td class="mono">'+(ult?fmtDate(ult):'—')+'</td><td>'+(last?laudoSelo(last):'—')+'</td><td class="mono">'+count+'</td>'
         + '<td><span class="pill '+st.cls+'">'+esc(st.label)+'</span></td></tr>';
     });
     html += '</tbody></table></div></div>';
