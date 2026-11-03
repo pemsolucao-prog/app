@@ -579,6 +579,12 @@ button.pt-card{cursor:pointer;}
 .tl-sig-acts{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;}
 .tl-sig-acts .btn{min-height:46px;}
 .lab-frasco{display:inline-block;background:#123F73;color:#fff;border-radius:6px;padding:0 7px;font-size:13px;font-weight:800;letter-spacing:.05em;margin-right:4px;}
+/* situação das propostas geradas */
+select.pp-sit{font-size:13px;padding:5px 8px;border-radius:8px;font-weight:600;}
+select.pp-sit-warn{background:#FFF4D6;border-color:#E7C77A;color:#6B4E00;}
+select.pp-sit-ok{background:#E7F6EC;border-color:#9ED3AE;color:#166534;}
+select.pp-sit-danger{background:#FDECEC;border-color:#F1A9A9;color:#9F1D1D;}
+select.pp-sit-neutral{background:#F1F4F8;border-color:#CBD5E1;color:#334155;}
 
 </style>
 <script src="firebase-app-compat.js"></script>
@@ -906,7 +912,7 @@ button.pt-card{cursor:pointer;}
     <!-- Demais abas (Manutenções, Análises, Orçamentos) temporariamente
          removidas da navegação a pedido do usuário, para isolar o problema de conexão com o banco.
          O código continua abaixo, intacto, para religarmos assim que resolvido. -->
-    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 02/11 22:03</span></div>
+    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 02/11 22:22</span></div>
   </nav>
   <main id="main">
     <div id="topbar">
@@ -1568,6 +1574,7 @@ async function saveGeneratedProposal(c, type, number, dateISO, htmlContent, extr
     // com o texto/layout ATUAL do modelo, em vez de repetir o HTML congelado da época.
     params: extra.params || null,
     materiais: extra.materiais || null,
+    situacao: type==='manutencao' ? null : 'gerada',
     createdAt: new Date().toISOString()
   });
 }
@@ -2553,7 +2560,7 @@ function renderDashboard(){
 function clientCategoryOf(c){ return c.clientCategory==='instalacao' ? 'instalacao' : (c.clientCategory==='extra' ? 'extra' : 'manutencao'); }
 // Grupo em que o cliente aparece na aba Clientes: quem está com proposta em aberto (ou
 // recusada) fica em "Propostas", independente do tipo; os demais pelo tipo de cliente.
-var PROPOSAL_STATUSES = ['Proposta enviada','Proposta recusada'];
+var PROPOSAL_STATUSES = ['Proposta enviada','Proposta recusada','Sem retorno'];
 function clientSegmentOf(c){
   if(PROPOSAL_STATUSES.indexOf(c.status) > -1) return 'propostas';
   return clientCategoryOf(c);
@@ -2570,7 +2577,7 @@ var CLIENT_FILTER_HINTS = {
   instalacao:'Clientes de implantação de sistema já fechados.',
   todos:'Todos os clientes cadastrados.'
 };
-var ARCHIVED_STATUSES = ['Proposta recusada','Encerrado'];
+var ARCHIVED_STATUSES = ['Proposta recusada','Sem retorno','Encerrado'];
 var hideArchived = true; // oculta recusados/encerrados da lista por padrão, sem apagar o cadastro
 function renderClientes(){
   var all = state.clients.slice().sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
@@ -4090,24 +4097,68 @@ function buildImplantacaoProposalHTML(client, params, materiais){
     + docFooterHTML();
   return html;
 }
+/* ---- Situação de cada proposta de instalação gerada ----
+   gerada → enviada (aguardando retorno) → execução agendada → concluída; ou recusada / sem retorno.
+   Arquivar só tira da lista (fica guardada e o número continua usado). A situação também
+   atualiza o cliente na aba Clientes (recusada / sem retorno saem da lista "Propostas enviadas"). */
+var PP_SITUACOES = [
+  ['gerada','Gerada (não enviada)','neutral'],
+  ['enviada','Enviada · aguardando retorno','warn'],
+  ['agendada','Aceita · execução agendada','ok'],
+  ['concluida','Concluída','ok'],
+  ['semretorno','Sem retorno','neutral'],
+  ['recusada','Recusada','danger']
+];
+var PP_SEM_RETORNO_DIAS = 30;
+var ppVerArquivadas = false;
+function ppSituacao(p){
+  if(p.situacao) return p.situacao;
+  var c = state.clients.find(function(x){ return x.id===p.clientId; });
+  if(c && c.status==='Proposta recusada') return 'recusada';
+  if(c && c.status==='Sem retorno') return 'semretorno';
+  return (c && c.status==='Proposta enviada') ? 'enviada' : 'gerada';
+}
+function ppSituacaoClienteSync(p, sit){
+  var c = state.clients.find(function(x){ return x.id===p.clientId; });
+  if(!c) return;
+  // só mexe em quem é cliente de implantação ou está em fase de proposta (nunca num cliente de manutenção ativo)
+  if(clientCategoryOf(c)!=='instalacao' && PROPOSAL_STATUSES.indexOf(c.status)===-1) return;
+  var novo = { gerada:'Proposta enviada', enviada:'Proposta enviada', agendada:'Ativo', concluida:'Ativo', semretorno:'Sem retorno', recusada:'Proposta recusada' }[sit];
+  if(novo && c.status!==novo) updateDoc('clients', c.id, { status: novo });
+}
 function propostasHistoricoHTML(filter){
-  var tipoTela = ppDocMode==='contrato' ? 'manutencao' : 'implantacao';
-  var list = state.generatedProposals.filter(function(p){ return (p.type||'implantacao')===tipoTela; }).sort(function(a,b){ return (b.createdAt||'').localeCompare(a.createdAt||''); });
+  var tipoTela = ppDocMode==='contrato' ? 'manutencao' : 'implantacao', comSit = tipoTela==='implantacao';
+  var todas = state.generatedProposals.filter(function(p){ return (p.type||'implantacao')===tipoTela; }).sort(function(a,b){ return (b.createdAt||'').localeCompare(a.createdAt||''); });
+  var nArq = todas.filter(function(p){ return p.arquivada; }).length;
+  var list = todas.filter(function(p){ return ppVerArquivadas ? p.arquivada : !p.arquivada; });
   var totalTela = list.length;
   if(filter){
     var f = filter.toLowerCase();
     list = list.filter(function(p){ return (p.clientName||'').toLowerCase().indexOf(f)>-1 || (p.number||'').toLowerCase().indexOf(f)>-1; });
   }
-  var html = '<div class="panel" id="pp-historico-panel" style="margin-top:20px;"><div class="panel-head"><h2>'+(ppDocMode==='contrato' ? 'Contratos gerados' : 'Propostas geradas')+' ('+totalTela+')</h2></div>'
+  var titulo = ppDocMode==='contrato' ? 'Contratos gerados' : (ppVerArquivadas ? 'Propostas arquivadas' : 'Propostas geradas');
+  var html = '<div class="panel" id="pp-historico-panel" style="margin-top:20px;"><div class="panel-head" style="flex-wrap:wrap;gap:8px;"><h2>'+titulo+' ('+totalTela+')</h2>'
+    + (comSit && (nArq || ppVerArquivadas) ? '<button class="btn small" id="pp-ver-arq">'+(ppVerArquivadas ? '← Voltar às propostas em andamento' : 'Ver arquivadas ('+nArq+')')+'</button>' : '')+'</div>'
     + '<div style="padding:14px 18px;"><input type="text" id="pp-hist-search" placeholder="Buscar por cliente ou número..." style="width:100%;max-width:360px;" value="'+esc(filter||'')+'"></div>';
   if(list.length===0){
-    html += '<div class="empty">'+(filter?'Nada encontrado para esta busca.':(ppDocMode==='contrato' ? 'Nenhum contrato gerado ainda.' : 'Nenhuma proposta gerada ainda.'))+'</div></div>';
+    html += '<div class="empty">'+(filter?'Nada encontrado para esta busca.':(ppDocMode==='contrato' ? 'Nenhum contrato gerado ainda.' : (ppVerArquivadas ? 'Nenhuma proposta arquivada.' : 'Nenhuma proposta em andamento.')))+'</div></div>';
     return html;
   }
-  html += '<div class="tablewrap"><table><thead><tr><th>N°</th><th>Cliente</th><th>Tipo</th><th>Data</th><th></th></tr></thead><tbody>'
+  html += '<div class="tablewrap"><table><thead><tr><th>N°</th><th>Cliente</th><th>Tipo</th><th>Data</th>'+(comSit ? '<th>Situação</th>' : '')+'<th></th></tr></thead><tbody>'
     + list.map(function(p){
-        return '<tr><td>'+esc(p.number||'—')+'</td><td>'+esc(p.clientName||'—')+'</td><td>'+(p.type==='manutencao'?'Manutenção':'Implantação')+'</td><td>'+fmtDate(p.date)+'</td>'
-          + '<td style="white-space:nowrap;"><button class="btn small pp-hist-open" data-id="'+p.id+'">Abrir / Reimprimir</button> <button class="btn small danger pp-hist-del" data-id="'+p.id+'">Excluir</button></td></tr>';
+        var sit = ppSituacao(p), aviso = '';
+        if(comSit && sit==='enviada'){
+          var dias = daysBetween(p.enviadaEm || p.date || todayISO(), todayISO());
+          aviso = dias >= PP_SEM_RETORNO_DIAS ? '<div class="hint" style="color:var(--danger,#b91c1c);font-weight:600;">sem resposta há '+dias+' dias — cobrar o cliente ou marcar "Sem retorno"</div>'
+                : '<div class="hint">enviada há '+dias+' dia'+(dias===1?'':'s')+'</div>';
+        }
+        if(comSit && sit==='agendada' && p.execucaoEm) aviso = '<div class="hint">execução em '+fmtDate(p.execucaoEm)+'</div>';
+        var cls = (PP_SITUACOES.filter(function(x){ return x[0]===sit; })[0] || ['','','neutral'])[2];
+        var sel = comSit ? '<td><select class="pp-sit pp-sit-'+cls+'" data-id="'+p.id+'" style="min-width:210px;">'+PP_SITUACOES.map(function(x){ return '<option value="'+x[0]+'" '+(x[0]===sit?'selected':'')+'>'+x[1]+'</option>'; }).join('')+'</select>'+aviso+'</td>' : '';
+        return '<tr><td>'+esc(p.number||'—')+'</td><td>'+esc(p.clientName||'—')+'</td><td>'+(p.type==='manutencao'?'Manutenção':'Implantação')+'</td><td>'+fmtDate(p.date)+'</td>'+sel
+          + '<td style="white-space:nowrap;"><button class="btn small pp-hist-open" data-id="'+p.id+'">Abrir / Reimprimir</button> '
+          + (comSit ? '<button class="btn small pp-hist-arq" data-id="'+p.id+'">'+(p.arquivada ? 'Desarquivar' : 'Arquivar')+'</button> ' : '')
+          + '<button class="btn small danger pp-hist-del" data-id="'+p.id+'">Excluir</button></td></tr>';
       }).join('')
     + '</tbody></table></div></div>';
   return html;
@@ -4115,13 +4166,44 @@ function propostasHistoricoHTML(filter){
 function wireHistorico(filterVal){
   var panel = $('#pp-historico-panel');
   if(!panel) return; // não estamos (mais) na aba Propostas — nada a atualizar
+  var buscaAtiva = document.activeElement && document.activeElement.id==='pp-hist-search';
   panel.outerHTML = propostasHistoricoHTML(filterVal);
   var searchInp = $('#pp-hist-search');
   if(searchInp){
     searchInp.addEventListener('input', function(){ wireHistorico(searchInp.value); });
-    searchInp.focus();
-    searchInp.selectionStart = searchInp.selectionEnd = searchInp.value.length;
+    if(buscaAtiva){ searchInp.focus(); searchInp.selectionStart = searchInp.selectionEnd = searchInp.value.length; }
   }
+  var ppDe = function(id){ return state.generatedProposals.find(function(x){ return x.id===id; }); };
+  if($('#pp-ver-arq')) $('#pp-ver-arq').onclick = function(){ ppVerArquivadas = !ppVerArquivadas; wireHistorico(''); };
+  $all('.pp-sit').forEach(function(selEl){
+    selEl.addEventListener('change', function(){
+      var p = ppDe(selEl.dataset.id); if(!p) return;
+      var sit = selEl.value, data = { situacao: sit, situacaoEm: todayISO() };
+      if(sit==='enviada' && !p.enviadaEm) data.enviadaEm = todayISO();
+      var salvar = function(extra){ Object.assign(data, extra||{}); Object.assign(p, data); updateDoc('generatedProposals', p.id, data); ppSituacaoClienteSync(p, sit); wireHistorico($('#pp-hist-search') ? $('#pp-hist-search').value : ''); };
+      if(sit==='agendada'){
+        $('#modal-title').textContent = 'Execução agendada — '+(p.clientName||'');
+        $('#modal-body').innerHTML = '<div class="field"><label>Data prevista da execução (opcional)</label><input type="date" id="pp-exec-data" value="'+esc(p.execucaoEm||'')+'"></div><div class="hint">O cliente passa para a lista de Implantação, em Clientes.</div>';
+        $('#modal-foot').innerHTML = '<button class="btn" id="pp-exec-cancel">Cancelar</button><button class="btn primary" id="pp-exec-ok">Salvar</button>';
+        $('#pp-exec-cancel').onclick = function(){ closeModal(); wireHistorico($('#pp-hist-search') ? $('#pp-hist-search').value : ''); };
+        $('#pp-exec-ok').onclick = function(){ var d = $('#pp-exec-data').value || null; closeModal(); salvar({ execucaoEm: d }); };
+        openModal();
+      } else salvar();
+    });
+  });
+  $all('.pp-hist-arq').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var p = ppDe(btn.dataset.id); if(!p) return;
+      var arq = !p.arquivada;
+      var faz = function(){ p.arquivada = arq; updateDoc('generatedProposals', p.id, { arquivada: arq, arquivadaEm: arq ? todayISO() : null }); wireHistorico($('#pp-hist-search') ? $('#pp-hist-search').value : ''); };
+      if(arq && ['enviada','gerada'].indexOf(ppSituacao(p))>-1){
+        customConfirm('Esta proposta ainda está "'+(ppSituacao(p)==='enviada'?'aguardando retorno':'não enviada')+'". Arquivar e marcar como "Sem retorno"?\n\nEla sai da lista (e o cliente sai de "Propostas enviadas"), mas continua guardada em "Ver arquivadas".', function(){
+          p.situacao = 'semretorno'; updateDoc('generatedProposals', p.id, { situacao:'semretorno', situacaoEm: todayISO() }); ppSituacaoClienteSync(p, 'semretorno'); faz();
+        });
+        if($('#modal-confirm-body')) $('#modal-confirm-body').style.whiteSpace = 'pre-line';
+      } else faz();
+    });
+  });
   $all('.pp-hist-open').forEach(function(btn){
     btn.addEventListener('click', function(){
       var p = state.generatedProposals.find(function(x){ return x.id===btn.dataset.id; });
@@ -4139,9 +4221,11 @@ function wireHistorico(filterVal){
   });
   $all('.pp-hist-del').forEach(function(btn){
     btn.addEventListener('click', function(){
-      customConfirm('Excluir esta proposta do histórico? O cliente e os dados cadastrados dele não são afetados — só o registro desta proposta gerada.', function(){
+      var p = ppDe(btn.dataset.id);
+      customConfirm('Excluir DE VEZ esta proposta'+(p && p.number ? ' ('+p.number+')' : '')+'?\n\nUse só para proposta gerada por engano. Se ela foi enviada ao cliente, prefira ARQUIVAR: o histórico fica guardado. O número não é reaproveitado e o cadastro do cliente não é afetado.', function(){
         deleteDoc('generatedProposals', btn.dataset.id);
       });
+      if($('#modal-confirm-body')) $('#modal-confirm-body').style.whiteSpace = 'pre-line';
     });
   });
 }
@@ -4720,7 +4804,7 @@ function openClientModal(id, presetCategory, presetStatus){
     + '<div class="field"><label>N° da proposta aceita</label><input type="text" id="f-proposal" value="'+esc(c?c.proposalNumber:'')+'" placeholder="Ex.: PC240/2026.3"></div>'
     + '<div class="field"><label>Início do contrato</label><input type="date" id="f-contract-start" value="'+(c&&c.contractStart?c.contractStart:'')+'"></div>'
     + '</div>'
-    + '<div class="field"><label>Situação</label><select id="f-status">'+['Ativo','Proposta enviada','Proposta recusada','Encerrado'].map(function(s){return '<option '+((c?c.status:(presetStatus||'Ativo'))===s?'selected':'')+'>'+s+'</option>';}).join('')+'</select></div>'
+    + '<div class="field"><label>Situação</label><select id="f-status">'+['Ativo','Proposta enviada','Sem retorno','Proposta recusada','Encerrado'].map(function(s){return '<option '+((c?c.status:(presetStatus||'Ativo'))===s?'selected':'')+'>'+s+'</option>';}).join('')+'</select></div>'
     + '<div class="field" id="proposal-due-wrap" style="display:'+((c?c.status:(presetStatus||'Ativo'))==='Proposta enviada'?'block':'none')+';"><label>Data limite p/ retorno da proposta (opcional)</label><input type="date" id="f-proposal-due" value="'+(c&&c.proposalDueDate?c.proposalDueDate:'')+'"></div>'
     + '<div class="section-title">Sistemas instalados</div>';
   Object.keys(SYSTEM_TYPES).forEach(function(key){
