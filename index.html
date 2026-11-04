@@ -912,7 +912,7 @@ select.pp-sit-neutral{background:#F1F4F8;border-color:#CBD5E1;color:#334155;}
     <!-- Demais abas (Manutenções, Análises, Orçamentos) temporariamente
          removidas da navegação a pedido do usuário, para isolar o problema de conexão com o banco.
          O código continua abaixo, intacto, para religarmos assim que resolvido. -->
-    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 02/11 22:22</span></div>
+    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 03/11 21:41</span></div>
   </nav>
   <main id="main">
     <div id="topbar">
@@ -3825,7 +3825,8 @@ function buildManutencaoProposalHTML(client, params, materiais){
           + '<br>'+esc(end.linha1)+(end.linha2 ? sep+esc(end.linha2) : '')
           + (client.contactName ? '<br>A/C de '+esc(client.contactName) : '');
         var contratada = '<strong style="color:'+NAVY+';font-size:13px;">P&amp;M Soluções em Água</strong>'+sep+'CNPJ '+esc(COMPANY.cnpj)
-          + '<br>Resp. técnico: '+esc(COMPANY.signer)+sep+esc(COMPANY.signerTitle)+', '+esc(COMPANY.signerCRQ)
+          + '<br>Técnico responsável pelos serviços: '+esc(COMPANY.signer)
+          + '<br>'+esc(COMPANY.signerTitle)+', '+esc(COMPANY.signerCRQ)
           + '<br>'+esc(COMPANY.phone)+sep+esc(COMPANY.email);
         return '<table style="width:100%;border-collapse:collapse;font-size:12.5px;margin:0 0 12px;border-top:2px solid '+BLUE+';">'
           + linha('Contratante', contratante) + linha('Contratada', contratada, true) + '</table>';
@@ -3865,11 +3866,12 @@ function buildManutencaoProposalHTML(client, params, materiais){
           'O plano de amostragem contratado compreende <strong>3 (três) coletas por ano</strong>, realizadas quadrimestralmente nos meses de <strong>fevereiro, junho e outubro</strong>, durante a visita técnica do mês'+(pontos ? ', <strong>em cada ponto de atendimento ('+esc(pontosNomes)+')</strong>' : '')+'. Se a visita do mês não ocorrer, a coleta será feita na visita seguinte.',
           'As amostras são encaminhadas a laboratório subcontratado e credenciado, que emite os laudos das análises físico-químicas e microbiológicas da água após o tratamento'+(pontos ? ', de cada ponto' : '')+': <strong>'+esc(analises)+'</strong>. Os laudos ficam disponíveis na Área do Cliente.',
           'Os resultados representam a água no ponto e no momento da coleta.',
-          'Análises adicionais — exigidas pela legislação, pela vigilância sanitária ou recoletas após resultado fora do padrão — não estão incluídas no valor mensal e podem ser contratadas à parte.'
+          'Este plano básico foi definido de comum acordo como acompanhamento técnico da qualidade da água, adequado à situação atual do imóvel. Caso a vigilância sanitária ou a legislação passem a exigir do contratante um plano de amostragem completo (Portaria GM/MS Nº 888/2021), a contratada está apta a elaborá-lo e executá-lo, mediante revisão deste contrato. Recoletas após resultado fora do padrão também podem ser contratadas à parte.'
         ]))
     + clausula('4', 'RESPONSABILIDADES DO CONTRATANTE',
         ul([
           'Como responsável pela solução de abastecimento do imóvel (art. 13 da Portaria GM/MS Nº 888/2021), cabe ao contratante o controle da qualidade da água, incluindo o plano de amostragem eventualmente exigido pela legislação ou pela vigilância sanitária além do contratado na Cláusula 3.',
+          'A responsabilidade técnica pela operação da solução de abastecimento perante a autoridade sanitária, com emissão de ART (art. 23 da Portaria GM/MS Nº 888/2021), não está incluída neste contrato; caso venha a ser exigida, pode ser assumida pela contratada mediante revisão contratual.',
           'Cabe ao contratante a limpeza e a conservação dos reservatórios e da tubulação, a operação diária do sistema, o fornecimento de energia elétrica e o acesso da contratada aos equipamentos nas datas das visitas.',
           'A contratada comunicará ao contratante qualquer resultado fora do padrão ou anomalia observada, com as recomendações técnicas cabíveis; a adoção das medidas corretivas é decisão e responsabilidade do contratante.',
           'A contratada não responde por alterações na qualidade da água decorrentes de fatores fora do seu controle, como contaminação do manancial, falta de energia, intervenção de terceiros no sistema, falta de limpeza dos reservatórios ou não adoção das recomendações técnicas.'
