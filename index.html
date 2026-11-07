@@ -585,6 +585,9 @@ select.pp-sit-warn{background:#FFF4D6;border-color:#E7C77A;color:#6B4E00;}
 select.pp-sit-ok{background:#E7F6EC;border-color:#9ED3AE;color:#166534;}
 select.pp-sit-danger{background:#FDECEC;border-color:#F1A9A9;color:#9F1D1D;}
 select.pp-sit-neutral{background:#F1F4F8;border-color:#CBD5E1;color:#334155;}
+/* selo "Novo" nos laudos do cliente */
+.pt-novo{display:inline-block;background:#16a34a;color:#fff;font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;border-radius:999px;padding:2px 8px;vertical-align:middle;}
+.pt-card-novo{border-color:#86efac !important;box-shadow:0 0 0 2px rgba(22,163,74,.15);}
 
 </style>
 <script src="firebase-app-compat.js"></script>
@@ -912,7 +915,7 @@ select.pp-sit-neutral{background:#F1F4F8;border-color:#CBD5E1;color:#334155;}
     <!-- Demais abas (Manutenções, Análises, Orçamentos) temporariamente
          removidas da navegação a pedido do usuário, para isolar o problema de conexão com o banco.
          O código continua abaixo, intacto, para religarmos assim que resolvido. -->
-    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 06/11 13:15</span></div>
+    <div class="sidebar-foot">P&amp;M Soluções em Água<br>CNPJ 38.069.730/0001-11<br><span style="opacity:.75;">Versão do app: 06/11 22:07</span></div>
   </nav>
   <main id="main">
     <div id="topbar">
@@ -7452,7 +7455,8 @@ function renderPortal(force){
     }
     var lastLaudo = state.reports.filter(function(r){ return r.publicado; }).sort(function(a,b){ return (b.collectionDate||'').localeCompare(a.collectionDate||''); })[0];
     if(lastLaudo){
-      html += '<button type="button" class="pt-card" data-go="laudos"><div style="flex:1;min-width:0;"><div class="pt-k2">Última análise do laboratório · coleta '+fmtDate(lastLaudo.collectionDate)+'</div>'
+      var ehNovo = laudosNovos().some(function(r){ return r.id===lastLaudo.id; });
+      html += '<button type="button" class="pt-card'+(ehNovo?' pt-card-novo':'')+'" data-go="laudos"><div style="flex:1;min-width:0;"><div class="pt-k2">'+(ehNovo ? '<span class="pt-novo">Novo</span> ' : '')+'Última análise do laboratório · coleta '+fmtDate(lastLaudo.collectionDate)+'</div>'
         + '<div style="margin-top:6px;">'+laudoSelo(lastLaudo)+'</div></div><span class="pt-chev" aria-hidden="true">›</span></button>';
     }
     html += '<div class="pt-grid">'
@@ -7463,7 +7467,9 @@ function renderPortal(force){
             + (n ? n+' pedido'+(n>1?'s':'')+' aguardando o técnico' : 'Seus pedidos: aguardando e concluídos')+'</span></span>'
             + (n ? '<span class="pt-count">'+n+'</span>' : '<span class="pt-chev" aria-hidden="true">›</span>')+'</button>'; })()
       + '<button type="button" class="pt-tile" data-go="relatorios"><span class="pt-ico">≡</span>Relatórios de visita<span class="pt-tile-sub">Manutenção, limpezas e trocas de peças</span></button>'
-      + '<button type="button" class="pt-tile" data-go="laudos"><span class="pt-ico ok">✓</span>Laudos de análise<span class="pt-tile-sub">Resultados do laboratório</span></button>'
+      + (function(){ var n = laudosNovos().length;
+          return '<button type="button" class="pt-tile" data-go="laudos" style="position:relative;"><span class="pt-ico ok">✓</span>Laudos de análise<span class="pt-tile-sub">'+(n ? n+' novo'+(n>1?'s':'')+' para ver' : 'Resultados do laboratório')+'</span>'
+            + (n ? '<span class="pt-count" style="position:absolute;top:8px;right:8px;">'+n+'</span>' : '')+'</button>'; })()
       + '<button type="button" class="pt-tile" data-go="qualidade"><span class="pt-ico">◔</span>Qualidade da água<span class="pt-tile-sub">pH, cloro e temperatura</span></button>'
       + '<button type="button" class="pt-tile" data-go="contrato"><span class="pt-ico">§</span>Contrato<span class="pt-tile-sub">Contrato e revisões</span></button>'
       + '<a class="pt-tile pt-wide" href="https://wa.me/'+PM_WHATS+'" target="_blank" rel="noopener"><span class="pt-ico ok">✆</span>Falar no WhatsApp</a>'
@@ -7757,6 +7763,7 @@ function laudoFileName(r){
 
 /* ---- administrador: aba Relatórios (laudos) ---- */
 function renderRelatorios(){
+  if(typeof acessoSubscribe==='function' && fbRole==='admin') acessoSubscribe(); // responsáveis de cada cliente, para o aviso no WhatsApp
   var manutClients = state.clients.filter(function(c){ return isActiveClient(c) && clientCategoryOf(c)==='manutencao'; })
     .slice().sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
   var html = '<div class="panel" style="margin-bottom:20px;"><div class="panel-head" style="flex-wrap:wrap;gap:8px;"><h2>Status de coleta por cliente</h2><span class="hint">Plano do contrato: 3 coletas por ano — <strong>fevereiro, junho e outubro</strong></span></div>';
@@ -7786,9 +7793,10 @@ function renderRelatorios(){
         + '<td>'+esc(clientName(r.clientId))+(amostra?'<div class="hint">'+esc(amostra)+'</div>':'')+'</td>'
         + '<td class="mono">'+esc(r.numero||'—')+'</td>'
         + '<td>'+laudoSelo(r)+(r.conclusao==='impropria' && !r.notaCliente ? '<div class="hint" style="color:var(--danger)">sem nota ao cliente</div>' : '')+'</td>'
-        + '<td>'+(r.publicado ? '<span class="pill ok">Publicado</span>' : '<span class="pill neutral">Não</span>')+'</td>'
+        + '<td>'+(r.publicado ? '<span class="pill ok">Publicado</span>'+(r.avisoWhatsEm ? '<div class="hint">avisado '+fmtDate(String(r.avisoWhatsEm).slice(0,10))+'</div>' : '') : '<span class="pill neutral">Não</span>')+'</td>'
         + '<td><div class="manut-acts">'
         + (laudoFileId(r) ? '<button class="btn small lau-open" data-id="'+r.id+'">PDF</button>' : '')
+        + (r.publicado ? '<button class="btn small lau-avisar" data-id="'+r.id+'" title="Avisar o cliente pelo WhatsApp">Avisar</button>' : '')
         + '<button class="btn small lau-edit" data-id="'+r.id+'">Editar</button>'
         + '<button class="btn small danger lau-del" data-id="'+r.id+'">Excluir</button></div></td></tr>';
     });
@@ -7798,6 +7806,7 @@ function renderRelatorios(){
   $('#report-filter').addEventListener('change', function(){ reportClientFilter = this.value; renderRelatorios(); });
   $all('.lau-open').forEach(function(b){ b.onclick = function(){ var r = state.reports.find(function(x){ return x.id===b.dataset.id; }); var w = window.open('', '_blank'); fbOpenReportFile(laudoFileId(r), w); }; });
   $all('.lau-edit').forEach(function(b){ b.onclick = function(){ openReportModal(b.dataset.id); }; });
+  $all('.lau-avisar').forEach(function(b){ b.onclick = function(){ var r = state.reports.find(function(x){ return x.id===b.dataset.id; }); if(r) laudoAvisoModal(r); }; });
   $all('.lau-del').forEach(function(b){ b.onclick = function(){
     var r = state.reports.find(function(x){ return x.id===b.dataset.id; }); if(!r) return;
     customConfirm('Excluir este laudo? O PDF também é apagado e o cliente deixa de vê-lo.', async function(){
@@ -7900,6 +7909,7 @@ function openReportModal(editId){
       if(r0){
         if(r0.clientId !== cid && laudoFileId(r0)){ var fid0 = laudoFileId(r0); db.collection('reportFiles').doc(fid0).update({ clientId: cid }); var mm = await db.collection('reportFiles').doc(fid0).get(); for(var i=0;i<((mm.exists && mm.data().chunks)||0);i++) db.collection('reportFileChunks').doc(fid0+'_'+i).update({ clientId: cid }); }
         await updateDoc('reports', r0.id, data);
+        var salvo = Object.assign({}, r0, data, { id: r0.id });
       } else {
         st.textContent = 'Guardando o PDF…';
         var up = await fbAssets.upload(arquivo, { clientId: cid });
@@ -7910,18 +7920,68 @@ function openReportModal(editId){
           interpretacao: lido ? lido.amostras.map(function(a){ return a.interpretacao; }).filter(Boolean).join(' ') : '',
           amostras: lido ? lido.amostras.map(function(a){ return { codigo:a.codigo, ponto:a.ponto, tipo:a.tipo, dataColeta:a.dataColeta, horaColeta:a.horaColeta, coletor:a.coletor, conclusao:a.conclusao, parametros:a.parametros }; }) : []
         });
-        await createDoc('reports', data);
+        var novoId = await createDoc('reports', data);
+        var salvo = Object.assign({}, data, { id: novoId });
       }
       closeModal();
       window.PM_FB.toast(pub ? 'Laudo salvo e publicado para o cliente ✓' : 'Laudo salvo (o cliente ainda não vê) ✓', '', 3500);
+      if(pub && !(r0 && r0.publicado) && salvo && salvo.id) setTimeout(function(){ laudoAvisoModal(salvo); }, 300);
     }catch(e){ btn.disabled = false; st.textContent = 'Erro ao salvar: '+(e && e.message || e); }
   };
   openModal();
 }
 
+/* ---- aviso ao cliente pelo WhatsApp quando um laudo é publicado ---- */
+function laudoAvisoTexto(r, c, nome){
+  var mes = r.collectionDate ? MESES_PT[Number(String(r.collectionDate).slice(5,7))-1] : '';
+  var ponto = r.pointName || '';
+  var res = r.conclusao==='propria' ? '✅ Resultado: água *própria para consumo*.'
+          : r.conclusao==='impropria' ? '⚠️ Este resultado pede atenção. No app está a nota da P&M com o que foi encontrado e as providências; nossa equipe já está acompanhando.'
+          : '';
+  return 'Olá'+(nome ? ', '+nome : '')+'! Tudo bem?\n\n'
+    + 'O *relatório analítico'+(mes ? ' de '+mes : '')+'*'+(ponto ? ' ('+ponto+')' : '')+' do '+(c.name||'seu cadastro')+' já está disponível na Área do Cliente P&M.\n\n'
+    + (res ? res+'\n\n' : '')
+    + 'Acesse: '+(typeof APP_URL==='string' ? APP_URL : 'https://app.pmsolucoes.com.br/')+'\n\n'
+    + 'P&M Soluções em Água';
+}
+function laudoAvisoDestinos(c){
+  var out = [];
+  try{ if(typeof acessosDoCliente==='function') acessosDoCliente(c).forEach(function(u){ if(u.telefone) out.push({ nome: u.nome||'', tel: u.telefone, rot: (u.nome||'Responsável')+' · '+u.telefone }); }); }catch(e){}
+  if(!out.length && c.phone) out.push({ nome: c.contactName||'', tel: c.phone, rot: (c.contactName||'Contato do cadastro')+' · '+c.phone });
+  return out;
+}
+function laudoAvisoModal(r, tentou){
+  if(typeof acessoSubscribe==='function') acessoSubscribe();
+  if(!tentou && !(state.usersCli||[]).length){ setTimeout(function(){ laudoAvisoModal(r, true); }, 900); }
+  var c = state.clients.find(function(x){ return x.id===r.clientId; }) || {};
+  var ds = laudoAvisoDestinos(c);
+  $('#modal-title').textContent = 'Avisar o cliente pelo WhatsApp';
+  $('#modal-body').innerHTML = '<p style="margin:0 0 10px;line-height:1.5;">Laudo de <strong>'+esc(c.name||'')+'</strong>, coleta '+fmtDate(r.collectionDate)+(r.pointName?' · '+esc(r.pointName):'')+'.</p>'
+    + (ds.length ? '<div class="hint" style="margin-bottom:8px;">Toque em quem vai receber. O WhatsApp abre com a mensagem pronta; é só conferir e enviar.</div>'
+        + ds.map(function(d, i){ return '<button type="button" class="btn lau-av-go" data-i="'+i+'" style="display:flex;width:100%;justify-content:flex-start;gap:8px;margin-bottom:6px;"><span style="color:#16a34a;">✆</span>'+esc(d.rot)+'</button>'; }).join('')
+      : '<div class="rj-banner warn"><span>Este cliente não tem telefone no cadastro nem acesso com WhatsApp. Cadastre o telefone em Clientes para poder avisar.</span></div>')
+    + (r.avisoWhatsEm ? '<div class="hint" style="margin-top:8px;">Último aviso enviado em '+fmtDate(String(r.avisoWhatsEm).slice(0,10))+'.</div>' : '');
+  $('#modal-foot').innerHTML = '<button class="btn" id="lau-av-fechar">Fechar</button>';
+  $('#lau-av-fechar').onclick = closeModal;
+  $all('.lau-av-go').forEach(function(b){ b.onclick = function(){
+    var d = ds[Number(b.dataset.i)];
+    window.open('https://wa.me/'+waNumero(d.tel)+'?text='+encodeURIComponent(laudoAvisoTexto(r, c, acessoPrimeiroNome(d.nome))), '_blank', 'noopener');
+    var agora = new Date().toISOString(); r.avisoWhatsEm = agora; updateDoc('reports', r.id, { avisoWhatsEm: agora });
+    b.innerHTML = '<span style="color:#16a34a;">✓</span>'+esc(d.rot)+' — WhatsApp aberto';
+  }; });
+  if(!$('#modal').open) openModal();
+}
+
+/* ---- cliente: laudos ainda não vistos (selo "Novo"), guardado neste aparelho ---- */
+function laudoVistosKey(){ try{ var u = window.PM_FB && PM_FB.auth && PM_FB.auth.currentUser; return 'pm.laudosVistos.'+((u && u.uid) || 'anon'); }catch(e){ return 'pm.laudosVistos.anon'; } }
+function laudoVistos(){ try{ return JSON.parse(localStorage.getItem(laudoVistosKey()) || '[]'); }catch(e){ return []; } }
+function laudoMarcarVistos(ids){ try{ var v = laudoVistos(); ids.forEach(function(id){ if(v.indexOf(id)<0) v.push(id); }); localStorage.setItem(laudoVistosKey(), JSON.stringify(v.slice(-300))); }catch(e){} }
+function laudosNovos(){ var v = laudoVistos(); return state.reports.filter(function(r){ return r.publicado && v.indexOf(r.id)<0; }); }
+
 /* ---- cliente: aba Laudos de análise ---- */
 function portalLaudosHTML(){
   var list = state.reports.filter(function(r){ return r.publicado; }).sort(function(a,b){ return (b.collectionDate||'').localeCompare(a.collectionDate||''); });
+  var novosIds = laudosNovos().map(function(r){ return r.id; });
   var html = '<h1 class="pt-h">Laudos de análise</h1><p class="pt-k2" style="margin:-6px 2px 14px;">Análises da sua água feitas por laboratório parceiro, a partir das coletas da P&amp;M.</p>';
   if(!list.length) return html + '<div class="pt-empty">Ainda não há laudos publicados. Assim que o laboratório entregar o resultado da próxima coleta, ele aparece aqui.</div>';
   var byM = {};
@@ -7931,7 +7991,7 @@ function portalLaudosHTML(){
     byM[k].forEach(function(r){
       var am = r.pointName || r.amostraIdent || '';
       html += '<div class="pt-card laudo-row'+(r.conclusao==='impropria'?' bad':'')+'"><div style="flex:1;min-width:0;">'
-        + '<div class="laudo-top"><div><div class="pt-t">Coleta '+fmtDate(r.collectionDate)+'</div><div class="pt-k2">'+esc(am)+(r.numero?' · Nº '+esc(r.numero):'')+'</div></div>'+laudoSelo(r)+'</div>'
+        + '<div class="laudo-top"><div><div class="pt-t">Coleta '+fmtDate(r.collectionDate)+(novosIds.indexOf(r.id)>-1 ? ' <span class="pt-novo">Novo</span>' : '')+'</div><div class="pt-k2">'+esc(am)+(r.numero?' · Nº '+esc(r.numero):'')+'</div></div>'+laudoSelo(r)+'</div>'
         + (r.notaCliente ? '<div class="laudo-nota">'+esc(r.notaCliente)+'</div>' : '')
         + '<div class="laudo-acts"><button type="button" class="btn lau-ver" data-id="'+r.id+'">Visualizar</button><button type="button" class="btn primary lau-baixar" data-id="'+r.id+'">Baixar</button></div>'
         + (r.chave ? '<div class="pt-k2 laudo-chave">Chave de validação do laboratório: <span class="mono">'+esc(r.chave)+'</span></div>' : '')
@@ -7941,6 +8001,7 @@ function portalLaudosHTML(){
   return html;
 }
 function wirePortalLaudos(){
+  laudoMarcarVistos(state.reports.filter(function(r){ return r.publicado; }).map(function(r){ return r.id; }));
   $all('.lau-ver').forEach(function(b){ b.onclick = function(){ var r = state.reports.find(function(x){ return x.id===b.dataset.id; }); var w = window.open('', '_blank'); fbOpenReportFile(laudoFileId(r), w); }; });
   $all('.lau-baixar').forEach(function(b){ b.onclick = function(){ var r = state.reports.find(function(x){ return x.id===b.dataset.id; }); b.disabled = true; fbDownloadReportFile(laudoFileId(r), laudoFileName(r)).then(function(){ b.disabled = false; }); }; });
 }
@@ -9111,6 +9172,29 @@ function acessoCriarModal(c){
   };
   openModal();
 }
+/* Mensagem de boas-vindas que acompanha a folha no WhatsApp (negrito do WhatsApp = *texto*) */
+function acessoPrimeiroNome(nome){
+  var t = String(nome||'').split(/[\/\-–,(]/)[0].trim().split(/\s+/).filter(function(w){ return !/^(sr|sra|srta|dr|dra|sindic[oa]|s[ií]ndic[oa])\.?$/i.test(w); });
+  return t[0] || '';
+}
+function acessoMensagemWhats(c, u){
+  var nome = acessoPrimeiroNome((u && u.nome) || c.contactName || '');
+  var pub = (state.reports||[]).filter(function(r){ return r.clientId===c.id && r.publicado && r.collectionDate; })
+    .sort(function(a,b){ return String(b.collectionDate).localeCompare(String(a.collectionDate)); })[0];
+  var mes = pub ? MESES_PT[Number(String(pub.collectionDate).slice(5,7))-1] : '';
+  return 'Olá'+(nome ? ', '+nome : '')+'! Tudo bem?\n\n'
+    + 'A P&M Soluções em Água tem uma novidade para vocês: a partir de hoje, o '+(c.name||'seu cadastro')+' tem acesso à *Área do Cliente P&M*, o nosso aplicativo.\n\n'
+    + 'Nele vocês acompanham, a qualquer hora e pelo celular:\n'
+    + '✅ os relatórios de cada visita técnica;\n'
+    + '✅ os relatórios analíticos do laboratório;\n'
+    + '✅ a qualidade da água (cloro, pH e temperatura);\n'
+    + '✅ pedidos de visita extra e contato direto com a gente.\n\n'
+    + '🔜 Em breve, os boletos e as notas fiscais de cada mês também estarão disponíveis no app.\n\n'
+    + (mes ? '📄 O *relatório analítico de '+mes+'* segue em anexo e também já está disponível no app. Nos próximos, vocês receberão um aviso sempre que um novo relatório for publicado.\n\n' : '')
+    + 'No PDF de boas-vindas estão o endereço do app, o seu login e uma senha provisória, além do passo a passo para instalar no celular. No primeiro acesso, o app pede para você criar a sua própria senha.\n\n'
+    + 'Qualquer dúvida, é só chamar aqui.\n\n'
+    + 'Um abraço,\nP&M Soluções em Água';
+}
 function acessoFolhaHTML(c, u, senha){
   var box = 'border:1px solid #C9D7E8;border-radius:10px;padding:12px 14px;';
   var real = u && u.email && !/^pemsolucao\+/i.test(u.email);
@@ -9150,7 +9234,7 @@ function acessoFolhaModal(c, u, senha){
     try{
       var blob = await buildPaginatedPdfBlob($('#ac-folha'));
       await compartilharPdfWhatsApp(blob, 'Area_do_Cliente_'+acessoSlug(c.name)+'.pdf', (u && u.telefone) || c.phone,
-        'Olá! Seja bem-vindo à Área do Cliente da P&M Soluções em Água. Segue o passo a passo para acessar o aplicativo.');
+        acessoMensagemWhats(c, u));
     }catch(e){ customAlert('Não foi possível gerar o PDF: '+(e && e.message || e)); }
     b.disabled = false; b.textContent = 'Enviar pelo WhatsApp';
   };
